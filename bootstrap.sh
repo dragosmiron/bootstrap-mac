@@ -323,10 +323,10 @@ if [ "$RUN_DOTFILES" = true ]; then
 
   if [ -d "$HOME/.local/share/chezmoi/.git" ]; then
     echo "📥 Pulling latest dotfile changes via Chezmoi..."
-    chezmoi update --force
+    chezmoi update
   else
     echo "📥 Initializing and applying dotfiles from $DOTFILES_REPO via Chezmoi..."
-    chezmoi init --apply --force "$DOTFILES_REPO"
+    chezmoi init --apply "$DOTFILES_REPO"
   fi
 else
   echo "⏭️  Skipping Chezmoi dotfiles sync (minimal bootstrap complete)."
