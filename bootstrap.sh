@@ -5,7 +5,9 @@ set -e
 cleanup() {
   rm -f /tmp/bootstrap-mac-Brewfile /tmp/rex.dmg /tmp/brew-preview-* 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Default configuration flags
 DEFAULT_DOTFILES_REPO="dragosmiron/dotfiles-private"
@@ -152,7 +154,10 @@ if [ -z "$DUMP_BREWFILE" ]; then
   if [ -t 0 ] || [ -c /dev/tty ]; then
     while true; do
       echo ""
-      read -r -p "📋 Would you like to update/dump ~/.Brewfile with all currently installed packages? [y/N/d]: " REPLY_DUMP </dev/tty || REPLY_DUMP=""
+      if ! read -r -p "📋 Would you like to update/dump ~/.Brewfile with all currently installed packages? [y/N/d]: " REPLY_DUMP </dev/tty; then
+        echo ""
+        exit 130
+      fi
       case "$REPLY_DUMP" in
         [dD])
           echo ""
@@ -301,11 +306,17 @@ if [ -z "$RUN_DOTFILES" ]; then
   if [ -t 0 ] || [ -c /dev/tty ]; then
     echo ""
     echo "🔐 Optional Chezmoi Dotfiles Sync:"
-    read -r -p "Would you like to apply a Chezmoi dotfiles repository? [y/N]: " REPLY </dev/tty || REPLY=""
+    if ! read -r -p "Would you like to apply a Chezmoi dotfiles repository? [y/N]: " REPLY </dev/tty; then
+      echo ""
+      exit 130
+    fi
     case "$REPLY" in
       [yY][eE][sS]|[yY])
         RUN_DOTFILES=true
-        read -r -p "Enter Git repo (e.g. username/repo or full URL) [default: $DEFAULT_DOTFILES_REPO]: " USER_REPO </dev/tty || USER_REPO=""
+        if ! read -r -p "Enter Git repo (e.g. username/repo or full URL) [default: $DEFAULT_DOTFILES_REPO]: " USER_REPO </dev/tty; then
+          echo ""
+          exit 130
+        fi
         DOTFILES_REPO="${USER_REPO:-$DEFAULT_DOTFILES_REPO}"
         ;;
       *)
