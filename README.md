@@ -16,36 +16,22 @@ This repository provides a single-command bootstrap for a fresh or existing Mac 
 
 ## Quickstart on a Brand New Mac
 
-Because `bootstrap-mac` and `dotfiles-private` are **private** repositories, a brand-new Mac needs two things to begin: **Homebrew** and **GitHub authentication**.
-
-Run these 3 commands in your terminal:
+To provision a fresh Mac from scratch, paste this single command into Terminal:
 
 ```bash
-# 1. Install Homebrew
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-eval "$(/opt/homebrew/bin/brew shellenv)"
-
-# 2. Install GitHub CLI & Log in (browser-based 1-click login)
-brew install gh
-gh auth login -p https -w
-
-# 3. Clone and run the bootstrap script
-gh repo clone dragosmiron/bootstrap-mac ~/Projects/bootstrap-mac
-~/Projects/bootstrap-mac/bootstrap.sh
+/usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)"
 ```
 
----
+### What happens automatically:
 
-### What `bootstrap.sh` does automatically
-
-Once started, `bootstrap.sh` handles everything end-to-end:
-1. Verifies/installs Xcode Command Line Tools.
-2. Ensures Homebrew is present and on `$PATH`.
-3. Installs `chezmoi` and `gh`, configuring `gh auth setup-git` (supporting either SSH keys or HTTPS token auth).
-4. Pulls your private dotfiles (`dragosmiron/dotfiles-private`) and deposits `~/.Brewfile`, `~/.zshrc`, and `~/.gitignore_global`.
-5. Runs `brew bundle` with `--adopt` to install all CLI runtimes, security tools, and GUI apps (adopting pre-existing apps in `/Applications` without errors).
-6. Installs and configures Rex Terminal Beta (`~/.local/bin/rex`).
-7. Applies all macOS system preferences (screenshots directory, fast key repeats, pathbar, `.DS_Store` suppression).
+1. **Xcode Command Line Tools**: Detected or installed automatically.
+2. **Homebrew**: Installs Homebrew if missing and configures `$PATH`.
+3. **Chezmoi & GitHub CLI**: Installs both via Homebrew.
+4. **GitHub Authentication**: Checks if SSH keys or `gh` auth are present. If you're on a blank Mac, it runs `gh auth login -p https -w` to log you into GitHub via browser in 1 click, then configures `git` credentials.
+5. **Private Dotfiles**: Clones and applies `dragosmiron/dotfiles-private` via Chezmoi, laying down your `~/.Brewfile`, `~/.zshrc`, and `~/.gitignore_global`.
+6. **Applications & Runtimes**: Runs `brew bundle` with `--adopt` to install all developer CLI tools, packages, and GUI casks without conflicts.
+7. **Rex Terminal**: Downloads the latest Rex Beta DMG and symlinks the CLI to `~/.local/bin/rex`.
+8. **System Preferences**: Applies all Finder, keyboard, and screenshot defaults.
 
 ---
 
