@@ -26,6 +26,13 @@ is_full_git_url() {
   esac
 }
 
+# Compares git remotes by host+path: strips scheme, user, port-ish colon and .git
+normalize_link() {
+  local u="${1#*//}"
+  u="${u#*@}"
+  printf '%s\n' "${u%.git}" | tr ':' '/'
+}
+
 # Environment variable overrides
 if [ -n "${BOOTSTRAP_MINIMAL:-}" ] && [ "${BOOTSTRAP_MINIMAL}" != "0" ]; then
   RUN_DOTFILES=false
@@ -381,8 +388,12 @@ if [ -z "$RUN_DOTFILES" ]; then
         fi
         if [ -n "$USER_REPO" ] && is_full_git_url "$USER_REPO"; then
           DOTFILES_REPO="$USER_REPO"
+        elif [ -n "$USER_REPO" ]; then
+          echo "Invalid dotfiles repository: $USER_REPO"
+          echo "Pass the full clone URL, e.g. git@github.com:you/dotfiles.git or https://github.com/you/dotfiles.git"
+          exit 1
         else
-          echo "No valid clone URL given; skipping dotfiles."
+          echo "No clone URL given; skipping dotfiles."
           RUN_DOTFILES=false
         fi
         ;;
@@ -455,7 +466,6 @@ if [ "$RUN_DOTFILES" = true ]; then
     # Refuse to update a source dir that tracks a different repo than the one requested
     # shortcut: normalization compares host+path only, so an explicit :443 or :22 port reads as a different repo and the user is asked to run chezmoi init themselves
     ORIGIN_URL="$(git -C "$HOME/.local/share/chezmoi" remote get-url origin 2>/dev/null || true)"
-    normalize_link() { local u="${1#*//}"; u="${u#*@}"; u="$(printf '%s' "${u%.git}" | tr ':' '/')"; echo "$u"; }
     if [ "$(normalize_link "$ORIGIN_URL")" != "$(normalize_link "$DOTFILES_REPO")" ]; then
       echo "❌ Chezmoi is already initialized from a different repository:"
       echo "     existing: $ORIGIN_URL"
