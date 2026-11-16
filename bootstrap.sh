@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -e
 
+# Cleanup temporary scratch files on exit
+cleanup() {
+  rm -f /tmp/bootstrap-mac-Brewfile /tmp/rex.dmg 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
 # Default configuration flags
 DEFAULT_DOTFILES_REPO="dragosmiron/dotfiles-private"
 DOTFILES_REPO="${BOOTSTRAP_DOTFILES:-${DOTFILES_REPO:-}}"
@@ -124,11 +130,9 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
 if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/Brewfile" ]; then
   BREWFILE="$SCRIPT_DIR/Brewfile"
-elif [ -f "$HOME/.Brewfile" ]; then
-  BREWFILE="$HOME/.Brewfile"
 else
   BREWFILE="/tmp/bootstrap-mac-Brewfile"
-  echo "📥 Fetching baseline Brewfile..."
+  echo "📥 Fetching baseline Brewfile from repository..."
   curl -fsSL -o "$BREWFILE" "https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/Brewfile"
 fi
 
