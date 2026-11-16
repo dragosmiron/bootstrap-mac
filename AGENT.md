@@ -116,24 +116,30 @@ zsh -n "$HOME/.zshrc"
 Only after verification passes, run dynamic checks on machine state to determine if any follow-up is needed.
 
 ### 1. Smart Brewfile Diff Check (Extra Packages)
-Do not prompt the user about dumping their Brewfile unless there are actually non-baseline packages installed on the machine.
+Do not prompt the user about dumping their Brewfile unless there are actually new or unrecorded packages on the machine that are not yet in `~/.Brewfile` (or in `./Brewfile` if `~/.Brewfile` does not exist).
 
-Check whether extra packages exist:
+Check whether unrecorded packages exist:
 ```bash
+# Compare against ~/.Brewfile if it exists, otherwise fall back to repo baseline
+TARGET_BREWFILE="${HOME}/.Brewfile"
+if [ ! -f "$TARGET_BREWFILE" ]; then
+  TARGET_BREWFILE="./Brewfile"
+fi
+
 # Dump installed formulas and casks to a temporary file quietly without auto-update noise
 TMP_DUMP="$(mktemp /tmp/brew-dump.XXXXXX)"
 HOMEBREW_NO_AUTO_UPDATE=1 brew bundle dump --force --file="$TMP_DUMP" >/dev/null 2>&1
 
-# Compare against the repo baseline Brewfile using consistent collation
+# Compare against the target Brewfile using consistent collation
 EXTRA_PACKAGES=$(LC_ALL=C comm -13 \
-  <(grep -E '^(brew|cask) ' "./Brewfile" | LC_ALL=C sort) \
+  <(grep -E '^(brew|cask) ' "$TARGET_BREWFILE" | LC_ALL=C sort) \
   <(grep -E '^(brew|cask) ' "$TMP_DUMP" | LC_ALL=C sort))
 rm -f "$TMP_DUMP"
 ```
 
-- **If no differences exist (`[ -z "$EXTRA_PACKAGES" ]`):** Skip silently. Do not prompt.
-- **If additional packages exist:** Show the list of extra packages and ask:
-  > *"I noticed extra packages installed on this machine that are not in the repository baseline (e.g. `...`). Would you like me to dump them into `~/.Brewfile` to preserve your complete machine state?"*
+- **If no differences exist (`[ -z "$EXTRA_PACKAGES" ]`):** Skip silently. `~/.Brewfile` is already up to date.
+- **If additional unrecorded packages exist:** Show the list of new packages and ask:
+  > *"I noticed new packages installed on this machine that are not recorded in your `~/.Brewfile` (e.g. `...`). Would you like me to update `~/.Brewfile` to preserve your complete machine state?"*
   - If user agrees, update `~/.Brewfile` directly preserving the `cask_args` adopt header:
     ```bash
     if [ -f "$HOME/.Brewfile" ]; then cp "$HOME/.Brewfile" "$HOME/.Brewfile.bak" 2>/dev/null || true; fi
