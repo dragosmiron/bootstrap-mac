@@ -19,7 +19,6 @@ brew "bitwarden-cli"
 
 # Daily Essentials & Security Casks
 cask "raycast"
-cask "alt-tab"
 cask "keepingyouawake"
 cask "bitwarden"
 cask "obsidian"
