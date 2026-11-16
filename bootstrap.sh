@@ -13,20 +13,33 @@ fi
 
 # 2. Homebrew
 if ! command -v brew >/dev/null 2>&1; then
-  echo "🍺 Installing Homebrew..."
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  eval "$(/opt/homebrew/bin/brew shellenv)"
+  if [ -x "/opt/homebrew/bin/brew" ]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [ -x "/usr/local/bin/brew" ]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  else
+    echo "🍺 Installing Homebrew..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    if [ -x "/opt/homebrew/bin/brew" ]; then
+      eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [ -x "/usr/local/bin/brew" ]; then
+      eval "$(/usr/local/bin/brew shellenv)"
+    fi
+  fi
 fi
 
 # 3. Chezmoi & Private Dotfiles
 echo "⚙️  Installing Chezmoi and pulling private dotfiles..."
 brew install chezmoi
-chezmoi init --apply git@github.com:dragosmiron/dotfiles-private.git
+chezmoi init --apply --force git@github.com:dragosmiron/dotfiles-private.git
 
 # 4. Restore All Packages & Apps
 if [ -f "$HOME/.Brewfile" ]; then
-  echo "📦 Installing all applications and tools from Brewfile..."
-  brew bundle --file="$HOME/.Brewfile" --no-upgrade || brew bundle --file="$HOME/.Brewfile"
+  echo "📦 Installing all applications and tools from Brewfile (adopting existing apps)..."
+  export HOMEBREW_CASK_OPTS="--adopt"
+  brew bundle --file="$HOME/.Brewfile" --no-upgrade || brew bundle --file="$HOME/.Brewfile" || {
+    echo "⚠️  Note: Some Brewfile packages or casks may require manual intervention or password prompt."
+  }
 fi
 
 # 5. Install Rex Terminal (Direct Preview DMG)
@@ -35,8 +48,11 @@ if [ ! -d "/Applications/Rex Beta.app" ]; then
   curl -fsSL -o /tmp/rex.dmg "https://blob.superlogical.com/download/rex-app/preview/latest.dmg"
   hdiutil attach /tmp/rex.dmg -mountpoint /Volumes/Rex -nobrowse -quiet
   cp -R "/Volumes/Rex/Rex Beta.app" /Applications/
-  hdiutil detach /Volumes/Rex -quiet
-  rm /tmp/rex.dmg
+  hdiutil detach /Volumes/Rex -quiet 2>/dev/null || true
+  rm -f /tmp/rex.dmg
+fi
+
+if [ -d "/Applications/Rex Beta.app" ]; then
   mkdir -p "$HOME/.local/bin"
   ln -sf "/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex" "$HOME/.local/bin/rex"
 fi
