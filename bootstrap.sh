@@ -3,7 +3,7 @@ set -e
 
 # Cleanup temporary scratch files on exit
 cleanup() {
-  rm -f /tmp/bootstrap-mac-Brewfile /tmp/rex.dmg 2>/dev/null || true
+  rm -f /tmp/bootstrap-mac-Brewfile /tmp/rex.dmg /tmp/brew-preview-* 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
@@ -150,16 +150,40 @@ fi
 # Optional dump/update of ~/.Brewfile with all currently installed packages
 if [ -z "$DUMP_BREWFILE" ]; then
   if [ -t 0 ] || [ -c /dev/tty ]; then
-    echo ""
-    read -r -p "📋 Would you like to update/dump ~/.Brewfile with all currently installed packages? [y/N]: " REPLY_DUMP </dev/tty || REPLY_DUMP=""
-    case "$REPLY_DUMP" in
-      [yY][eE][sS]|[yY])
-        DUMP_BREWFILE=true
-        ;;
-      *)
-        DUMP_BREWFILE=false
-        ;;
-    esac
+    while true; do
+      echo ""
+      read -r -p "📋 Would you like to update/dump ~/.Brewfile with all currently installed packages? [y/N/d]: " REPLY_DUMP </dev/tty || REPLY_DUMP=""
+      case "$REPLY_DUMP" in
+        [dD])
+          echo ""
+          echo "🔍 Generating diff of installed packages vs ~/.Brewfile..."
+          TMP_PREVIEW="/tmp/brew-preview-$$.txt"
+          brew bundle dump --file="$TMP_PREVIEW"
+          if ! grep -q "cask_args.*adopt:" "$TMP_PREVIEW" 2>/dev/null; then
+            TMP_PREVIEW_FORMATTED="/tmp/brew-preview-fmt-$$.txt"
+            echo 'cask_args appdir: "/Applications", adopt: true' > "$TMP_PREVIEW_FORMATTED"
+            echo "" >> "$TMP_PREVIEW_FORMATTED"
+            cat "$TMP_PREVIEW" >> "$TMP_PREVIEW_FORMATTED"
+            mv "$TMP_PREVIEW_FORMATTED" "$TMP_PREVIEW"
+          fi
+          if [ -f "$HOME/.Brewfile" ]; then
+            git diff --no-index --color "$HOME/.Brewfile" "$TMP_PREVIEW" || true
+          else
+            echo "📄 No existing ~/.Brewfile found on disk. New file will contain:"
+            cat "$TMP_PREVIEW"
+          fi
+          rm -f "$TMP_PREVIEW" 2>/dev/null || true
+          ;;
+        [yY][eE][sS]|[yY])
+          DUMP_BREWFILE=true
+          break
+          ;;
+        *)
+          DUMP_BREWFILE=false
+          break
+          ;;
+      esac
+    done
   else
     DUMP_BREWFILE=false
   fi
