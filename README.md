@@ -14,23 +14,38 @@ This repository provides a single-command bootstrap for a fresh or existing Mac 
 
 ---
 
-## Quickstart
+## Quickstart on a Brand New Mac
 
-### On a Fresh Mac
+Because `bootstrap-mac` and `dotfiles-private` are **private** repositories, a brand-new Mac needs two things to begin: **Homebrew** and **GitHub authentication**.
 
-Clone and run the bootstrap script:
-
-```bash
-git clone git@github.com:dragosmiron/bootstrap-mac.git ~/Projects/bootstrap-mac
-cd ~/Projects/bootstrap-mac
-./bootstrap.sh
-```
-
-Or run directly via curl if SSH keys are already configured:
+Run these 3 commands in your terminal:
 
 ```bash
-/usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)"
+# 1. Install Homebrew
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+
+# 2. Install GitHub CLI & Log in (browser-based 1-click login)
+brew install gh
+gh auth login -p https -w
+
+# 3. Clone and run the bootstrap script
+gh repo clone dragosmiron/bootstrap-mac ~/Projects/bootstrap-mac
+~/Projects/bootstrap-mac/bootstrap.sh
 ```
+
+---
+
+### What `bootstrap.sh` does automatically
+
+Once started, `bootstrap.sh` handles everything end-to-end:
+1. Verifies/installs Xcode Command Line Tools.
+2. Ensures Homebrew is present and on `$PATH`.
+3. Installs `chezmoi` and `gh`, configuring `gh auth setup-git` (supporting either SSH keys or HTTPS token auth).
+4. Pulls your private dotfiles (`dragosmiron/dotfiles-private`) and deposits `~/.Brewfile`, `~/.zshrc`, and `~/.gitignore_global`.
+5. Runs `brew bundle` with `--adopt` to install all CLI runtimes, security tools, and GUI apps (adopting pre-existing apps in `/Applications` without errors).
+6. Installs and configures Rex Terminal Beta (`~/.local/bin/rex`).
+7. Applies all macOS system preferences (screenshots directory, fast key repeats, pathbar, `.DS_Store` suppression).
 
 ---
 

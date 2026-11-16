@@ -28,10 +28,25 @@ if ! command -v brew >/dev/null 2>&1; then
   fi
 fi
 
-# 3. Chezmoi & Private Dotfiles
-echo "⚙️  Installing Chezmoi and pulling private dotfiles..."
-brew install chezmoi
-chezmoi init --apply --force git@github.com:dragosmiron/dotfiles-private.git
+# 3. Chezmoi, GitHub CLI & Private Dotfiles
+echo "⚙️  Installing Chezmoi and GitHub CLI..."
+brew install chezmoi gh
+
+# Determine Git authentication for private dotfiles
+DOTFILES_REPO="git@github.com:dragosmiron/dotfiles-private.git"
+
+if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
+  echo "🔑 SSH key not detected for GitHub. Checking GitHub CLI auth..."
+  if ! gh auth status >/dev/null 2>&1; then
+    echo "🌐 Authenticating with GitHub to pull private dotfiles..."
+    gh auth login -p https -w
+  fi
+  gh auth setup-git
+  DOTFILES_REPO="https://github.com/dragosmiron/dotfiles-private.git"
+fi
+
+echo "📥 Pulling and applying private dotfiles via Chezmoi..."
+chezmoi init --apply --force "$DOTFILES_REPO"
 
 # 4. Restore All Packages & Apps
 if [ -f "$HOME/.Brewfile" ]; then
