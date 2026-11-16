@@ -39,7 +39,7 @@ To provision a fresh Mac from scratch, paste this single command into Terminal:
 
 ### CLI Runtimes & Developer Tools
 - **Runtimes:** `node`, `go`, `python@3.12`
-- **Productivity & Search:** `fzf`, `zoxide`, `bat`, `eza`, `lazygit`, `gh`, `chezmoi`
+- **Productivity & Search:** `fzf`, `zoxide`, `bat`, `eza`, `lazygit`, `gh`, `chezmoi`, `bitwarden-cli`
 - **Shell:** Zsh with `zsh-autosuggestions` and `zsh-syntax-highlighting`
 
 ### GUI Applications (Homebrew Casks)
