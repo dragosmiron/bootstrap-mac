@@ -8,7 +8,7 @@ RUN_DOTFILES="${BOOTSTRAP_FULL:-}"
 CLI_ONLY="${BOOTSTRAP_CLI_ONLY:-false}"
 DUMP_BREWFILE="${BOOTSTRAP_DUMP:-}"
 
-if [ -n "$BOOTSTRAP_BASELINE" ] && [ "$BOOTSTRAP_BASELINE" != "0" ]; then
+if [ -n "$BOOTSTRAP_MINIMAL" ] && [ "$BOOTSTRAP_MINIMAL" != "0" ]; then
   RUN_DOTFILES=false
 fi
 if [ -n "$DOTFILES_REPO" ]; then
@@ -18,7 +18,7 @@ fi
 # Parse command line options
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --baseline|--minimal)
+    --minimal)
       RUN_DOTFILES=false
       DOTFILES_REPO=""
       shift
@@ -61,7 +61,7 @@ while [[ $# -gt 0 ]]; do
       echo "Universal, additive, and idempotent macOS bootstrap script."
       echo ""
       echo "Options:"
-      echo "  --baseline, --minimal   Minimal setup only (installs tools & settings; skips Chezmoi dotfiles)"
+      echo "  --minimal               Minimal setup only (installs tools & settings; skips Chezmoi dotfiles)"
       echo "  --full                  Full setup with default personal dotfiles ($DEFAULT_DOTFILES_REPO)"
       echo "  --dotfiles [REPO]       Pull and apply Chezmoi dotfiles from any Git repo (URL or username/repo)"
       echo "  --cli-only              Install CLI runtimes only (skips GUI casks and Rex Terminal)"
@@ -70,15 +70,15 @@ while [[ $# -gt 0 ]]; do
       echo "  -h, --help              Show this help message"
       echo ""
       echo "Examples:"
-      echo "  ./bootstrap.sh --baseline"
+      echo "  ./bootstrap.sh --minimal"
       echo "  ./bootstrap.sh --full"
       echo "  ./bootstrap.sh --dotfiles username/dotfiles"
       echo "  ./bootstrap.sh --dotfiles https://github.com/myorg/work-dotfiles.git"
-      echo "  ./bootstrap.sh --cli-only --baseline"
-      echo "  ./bootstrap.sh --baseline --dump"
+      echo "  ./bootstrap.sh --cli-only --minimal"
+      echo "  ./bootstrap.sh --minimal --dump"
       echo ""
       echo "Environment variables:"
-      echo "  BOOTSTRAP_BASELINE=1             Equivalent to --baseline"
+      echo "  BOOTSTRAP_MINIMAL=1              Equivalent to --minimal"
       echo "  BOOTSTRAP_FULL=1                 Equivalent to --full"
       echo "  BOOTSTRAP_DOTFILES=\"user/repo\"   Equivalent to --dotfiles user/repo"
       echo "  BOOTSTRAP_CLI_ONLY=1             Equivalent to --cli-only"
@@ -329,7 +329,7 @@ if [ "$RUN_DOTFILES" = true ]; then
     chezmoi init --apply --force "$DOTFILES_REPO"
   fi
 else
-  echo "⏭️  Skipping Chezmoi dotfiles sync (minimal baseline bootstrap complete)."
+  echo "⏭️  Skipping Chezmoi dotfiles sync (minimal bootstrap complete)."
 fi
 
 echo "✅ Mac bootstrap completed successfully!"
