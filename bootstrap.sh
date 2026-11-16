@@ -3,7 +3,7 @@ set -e
 
 # Cleanup temporary scratch files on exit
 cleanup() {
-  rm -f /tmp/bootstrap-mac-Brewfile /tmp/rex.dmg /tmp/brew-preview-* 2>/dev/null || true
+  rm -f /tmp/bootstrap-mac-Brewfile /tmp/rex.dmg /tmp/brew-* 2>/dev/null || true
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -151,46 +151,56 @@ fi
 
 # Optional dump/update of ~/.Brewfile with all currently installed packages
 if [ -z "$DUMP_BREWFILE" ]; then
-  if [ -t 0 ] || [ -c /dev/tty ]; then
-    while true; do
-      echo ""
-      if ! read -r -p "📋 Would you like to update/dump ~/.Brewfile with all currently installed packages? [y/N/d]: " REPLY_DUMP </dev/tty; then
+  TMP_CANDIDATE="/tmp/brew-candidate-$$.txt"
+  brew bundle dump --file="$TMP_CANDIDATE" 2>/dev/null || true
+  if [ -f "$TMP_CANDIDATE" ]; then
+    if ! grep -q "cask_args.*adopt:" "$TMP_CANDIDATE" 2>/dev/null; then
+      TMP_CANDIDATE_FMT="/tmp/brew-candidate-fmt-$$.txt"
+      echo 'cask_args appdir: "/Applications", adopt: true' > "$TMP_CANDIDATE_FMT"
+      echo "" >> "$TMP_CANDIDATE_FMT"
+      cat "$TMP_CANDIDATE" >> "$TMP_CANDIDATE_FMT"
+      mv "$TMP_CANDIDATE_FMT" "$TMP_CANDIDATE"
+    fi
+
+    # Check if ~/.Brewfile is already identical
+    if [ -f "$HOME/.Brewfile" ] && git diff --no-index --quiet "$HOME/.Brewfile" "$TMP_CANDIDATE"; then
+      echo "✨ ~/.Brewfile is already up to date with all installed packages."
+      DUMP_BREWFILE=false
+      rm -f "$TMP_CANDIDATE" 2>/dev/null || true
+    elif [ -t 0 ] || [ -c /dev/tty ]; then
+      while true; do
         echo ""
-        exit 130
-      fi
-      case "$REPLY_DUMP" in
-        [dD])
+        if ! read -r -p "📋 Changes detected. Would you like to update/dump ~/.Brewfile with all currently installed packages? [y/N/d]: " REPLY_DUMP </dev/tty; then
           echo ""
-          echo "🔍 Generating diff of installed packages vs ~/.Brewfile..."
-          TMP_PREVIEW="/tmp/brew-preview-$$.txt"
-          brew bundle dump --file="$TMP_PREVIEW"
-          if ! grep -q "cask_args.*adopt:" "$TMP_PREVIEW" 2>/dev/null; then
-            TMP_PREVIEW_FORMATTED="/tmp/brew-preview-fmt-$$.txt"
-            echo 'cask_args appdir: "/Applications", adopt: true' > "$TMP_PREVIEW_FORMATTED"
-            echo "" >> "$TMP_PREVIEW_FORMATTED"
-            cat "$TMP_PREVIEW" >> "$TMP_PREVIEW_FORMATTED"
-            mv "$TMP_PREVIEW_FORMATTED" "$TMP_PREVIEW"
-          fi
-          if [ -f "$HOME/.Brewfile" ]; then
-            git diff --no-index --color "$HOME/.Brewfile" "$TMP_PREVIEW" || true
-          else
-            echo "📄 No existing ~/.Brewfile found on disk. New file will contain:"
-            cat "$TMP_PREVIEW"
-          fi
-          rm -f "$TMP_PREVIEW" 2>/dev/null || true
-          ;;
-        [yY][eE][sS]|[yY])
-          DUMP_BREWFILE=true
-          break
-          ;;
-        *)
-          DUMP_BREWFILE=false
-          break
-          ;;
-      esac
-    done
-  else
-    DUMP_BREWFILE=false
+          rm -f "$TMP_CANDIDATE" 2>/dev/null || true
+          exit 130
+        fi
+        case "$REPLY_DUMP" in
+          [dD])
+            echo ""
+            echo "🔍 Generating diff of installed packages vs ~/.Brewfile..."
+            if [ -f "$HOME/.Brewfile" ]; then
+              git diff --no-index --color "$HOME/.Brewfile" "$TMP_CANDIDATE" || true
+            else
+              echo "📄 No existing ~/.Brewfile found on disk. New file will contain:"
+              cat "$TMP_CANDIDATE"
+            fi
+            ;;
+          [yY][eE][sS]|[yY])
+            DUMP_BREWFILE=true
+            break
+            ;;
+          *)
+            DUMP_BREWFILE=false
+            break
+            ;;
+        esac
+      done
+      rm -f "$TMP_CANDIDATE" 2>/dev/null || true
+    else
+      DUMP_BREWFILE=false
+      rm -f "$TMP_CANDIDATE" 2>/dev/null || true
+    fi
   fi
 fi
 
