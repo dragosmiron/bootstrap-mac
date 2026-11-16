@@ -4,11 +4,12 @@ Automated, idempotent, and non-destructive macOS bootstrapping and baseline prov
 
 ## Overview
 
-This repository provides a single-command setup for **brand-new Macs** as well as **existing or secondary machines**. It is designed to be **purely additive**:
+This repository provides a single-command setup for **brand-new Macs** as well as **existing, secondary, or work machines**. It is designed to be **purely additive and repository-independent**:
 
+- **Minimal & Independent**: Runs a complete baseline environment with **zero dotfiles repository** required.
+- **Any Dotfiles Repository**: Bring your own Chezmoi repo (public or private, personal or work) or use none at all.
 - **Non-Destructive**: Never overwrites your existing `~/.zshrc` or personalized configs; only appends guarded power tools if missing.
 - **Additive Software Installation**: Uses `Brewfile` with `adopt: true` so it only installs missing tools and never deletes or replaces existing applications.
-- **Decoupled Dotfiles**: Baseline bootstrap installs core tools and system settings independently; personal dotfiles (`dotfiles-private` via Chezmoi) are an optional overlay.
 
 ---
 
@@ -22,7 +23,7 @@ Run directly in Terminal:
 /usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)"
 ```
 
-During execution, it will install the baseline environment and prompt whether you want to also pull and apply your private Chezmoi dotfiles (`[y/N]`).
+During execution, it installs the baseline environment and prompts whether you want to apply a Chezmoi dotfiles repository (`[y/N]`) and allows specifying any repo URL.
 
 ---
 
@@ -32,18 +33,22 @@ You can control exactly how much or how little is applied:
 
 | Command | Behavior |
 | :--- | :--- |
-| `./bootstrap.sh` | **Interactive**: Installs baseline stack and asks before applying personal Chezmoi dotfiles. |
-| `./bootstrap.sh --baseline` | **Additive Baseline Only**: Installs tools, shell ergonomics, and defaults; completely skips personal dotfiles. |
-| `./bootstrap.sh --full` | **Full Machine Provisioning**: Installs baseline stack AND pulls/applies private Chezmoi dotfiles. |
+| `./bootstrap.sh --baseline` | **Minimal Setup Only**: Installs core tools, shell ergonomics, and defaults; requires **no dotfiles repo and no GitHub login**. |
+| `./bootstrap.sh --dotfiles <repo>` | **Custom Dotfiles Sync**: Applies baseline stack and pulls Chezmoi dotfiles from **any** repo (e.g. `username/repo` or full URL, public or private). |
+| `./bootstrap.sh --full` | **Default Personal Setup**: Applies baseline stack and syncs default personal repo (`dragosmiron/dotfiles-private`). |
 | `./bootstrap.sh --cli-only` | **Headless / Server Mode**: Installs only CLI runtimes and tools; skips all GUI casks and Rex Terminal. |
 
-#### Environment Variables for Automation:
-```bash
-# Automated full setup on a new machine:
-BOOTSTRAP_FULL=1 /usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)"
+#### One-Liner Automation Examples:
 
-# Automated baseline-only setup (safe on work or existing Macs):
-BOOTSTRAP_FULL=0 /usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)"
+```bash
+# Minimal baseline only (no dotfiles repo, zero auth required):
+/usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)" -- --baseline
+
+# Setup with any custom public or work dotfiles repo:
+/usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)" -- --dotfiles mycompany/mac-dotfiles
+
+# Full personal setup:
+/usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)" -- --full
 ```
 
 ---
@@ -56,7 +61,7 @@ BOOTSTRAP_FULL=0 /usr/bin/env bash -c "$(curl -fsSL https://raw.githubuserconten
 4. **Shell Ergonomics (`~/.zshrc`)**: Appends a clearly marked `# >>> bootstrap-mac >>>` block with Zoxide, FZF, and modern aliases. If the block already exists, it is untouched.
 5. **Rex Terminal**: Installs Rex Beta and creates the CLI symlink at `~/.local/bin/rex` (skipped if `--cli-only`).
 6. **macOS System Defaults**: Sets screenshot routing, fast key repeats, Finder pathbar, and `.DS_Store` suppression.
-7. **Optional Personal Chezmoi Dotfiles**: If selected, installs `chezmoi` and `gh`, establishes authentication, and syncs `dragosmiron/dotfiles-private`.
+7. **Optional Chezmoi Dotfiles**: If specified, verifies if the repo is public (clones immediately) or private (prompts 1-click GitHub CLI login), then applies dotfiles via Chezmoi.
 
 ---
 

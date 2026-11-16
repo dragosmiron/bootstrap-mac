@@ -2,19 +2,45 @@
 set -e
 
 # Default configuration flags
+DEFAULT_DOTFILES_REPO="dragosmiron/dotfiles-private"
+DOTFILES_REPO="${BOOTSTRAP_DOTFILES:-${DOTFILES_REPO:-}}"
 RUN_DOTFILES="${BOOTSTRAP_FULL:-}"
 CLI_ONLY="${BOOTSTRAP_CLI_ONLY:-false}"
+
+if [ -n "$BOOTSTRAP_BASELINE" ] && [ "$BOOTSTRAP_BASELINE" != "0" ]; then
+  RUN_DOTFILES=false
+fi
+if [ -n "$DOTFILES_REPO" ]; then
+  RUN_DOTFILES=true
+fi
 
 # Parse command line options
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --full|--dotfiles)
-      RUN_DOTFILES=true
+    --baseline|--minimal)
+      RUN_DOTFILES=false
+      DOTFILES_REPO=""
       shift
       ;;
-    --baseline)
-      RUN_DOTFILES=false
+    --full)
+      RUN_DOTFILES=true
+      DOTFILES_REPO="${DOTFILES_REPO:-$DEFAULT_DOTFILES_REPO}"
       shift
+      ;;
+    --dotfiles=*|--repo=*)
+      RUN_DOTFILES=true
+      DOTFILES_REPO="${1#*=}"
+      shift
+      ;;
+    --dotfiles|--repo)
+      RUN_DOTFILES=true
+      if [[ -n "${2:-}" ]] && [[ ! "$2" =~ ^- ]]; then
+        DOTFILES_REPO="$2"
+        shift 2
+      else
+        DOTFILES_REPO="$DEFAULT_DOTFILES_REPO"
+        shift
+      fi
       ;;
     --cli-only)
       CLI_ONLY=true
@@ -23,17 +49,27 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       echo "Usage: ./bootstrap.sh [OPTIONS]"
       echo ""
-      echo "Additive and idempotent macOS bootstrap script."
+      echo "Universal, additive, and idempotent macOS bootstrap script."
       echo ""
       echo "Options:"
-      echo "  --baseline       Run baseline setup only (installs tools & settings; skips private Chezmoi dotfiles)"
-      echo "  --full           Run baseline setup AND pull/apply personal Chezmoi dotfiles"
-      echo "  --cli-only       Install CLI developer runtimes only (skips GUI casks and Rex Terminal)"
-      echo "  -h, --help       Show this help message"
+      echo "  --baseline, --minimal   Minimal setup only (installs tools & settings; skips Chezmoi dotfiles)"
+      echo "  --full                  Full setup with default personal dotfiles ($DEFAULT_DOTFILES_REPO)"
+      echo "  --dotfiles [REPO]       Pull and apply Chezmoi dotfiles from any Git repo (URL or username/repo)"
+      echo "  --cli-only              Install CLI runtimes only (skips GUI casks and Rex Terminal)"
+      echo "  -h, --help              Show this help message"
+      echo ""
+      echo "Examples:"
+      echo "  ./bootstrap.sh --baseline"
+      echo "  ./bootstrap.sh --full"
+      echo "  ./bootstrap.sh --dotfiles username/dotfiles"
+      echo "  ./bootstrap.sh --dotfiles https://github.com/myorg/work-dotfiles.git"
+      echo "  ./bootstrap.sh --cli-only --baseline"
       echo ""
       echo "Environment variables:"
-      echo "  BOOTSTRAP_FULL=1       Equivalent to --full"
-      echo "  BOOTSTRAP_CLI_ONLY=1   Equivalent to --cli-only"
+      echo "  BOOTSTRAP_BASELINE=1             Equivalent to --baseline"
+      echo "  BOOTSTRAP_FULL=1                 Equivalent to --full"
+      echo "  BOOTSTRAP_DOTFILES=\"user/repo\"   Equivalent to --dotfiles user/repo"
+      echo "  BOOTSTRAP_CLI_ONLY=1             Equivalent to --cli-only"
       exit 0
       ;;
     *)
@@ -189,10 +225,13 @@ killall SystemUIServer 2>/dev/null || true
 if [ -z "$RUN_DOTFILES" ]; then
   if [ -t 0 ] || [ -c /dev/tty ]; then
     echo ""
-    read -r -p "🔐 Would you like to also apply your private Chezmoi dotfiles (dragosmiron/dotfiles-private)? [y/N]: " REPLY </dev/tty || REPLY=""
+    echo "🔐 Optional Chezmoi Dotfiles Sync:"
+    read -r -p "Would you like to apply a Chezmoi dotfiles repository? [y/N]: " REPLY </dev/tty || REPLY=""
     case "$REPLY" in
       [yY][eE][sS]|[yY])
         RUN_DOTFILES=true
+        read -r -p "Enter Git repo (e.g. username/repo or full URL) [default: $DEFAULT_DOTFILES_REPO]: " USER_REPO </dev/tty || USER_REPO=""
+        DOTFILES_REPO="${USER_REPO:-$DEFAULT_DOTFILES_REPO}"
         ;;
       *)
         RUN_DOTFILES=false
@@ -204,29 +243,46 @@ if [ -z "$RUN_DOTFILES" ]; then
 fi
 
 if [ "$RUN_DOTFILES" = true ]; then
-  echo "⚙️  Installing Chezmoi and GitHub CLI..."
-  brew install chezmoi gh
+  DOTFILES_REPO="${DOTFILES_REPO:-$DEFAULT_DOTFILES_REPO}"
+  echo "⚙️  Preparing Chezmoi for dotfiles repo: $DOTFILES_REPO..."
+  brew install chezmoi
 
-  DOTFILES_REPO="git@github.com:dragosmiron/dotfiles-private.git"
-  if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
-    echo "🔑 SSH key not detected for GitHub. Checking GitHub CLI auth..."
+  # Normalize repository URL for reachability test
+  TEST_URL="$DOTFILES_REPO"
+  if [[ "$TEST_URL" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+    TEST_URL="https://github.com/$TEST_URL.git"
+  fi
+
+  # Determine if repository is public or requires authentication
+  if [[ "$DOTFILES_REPO" =~ ^git@ ]]; then
+    # Explicit SSH URL (e.g. git@github.com:owner/repo.git)
+    HOST="${DOTFILES_REPO#*@}"
+    HOST="${HOST%%:*}"
+    if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T "git@$HOST" 2>&1 | grep -qE "successfully authenticated|Hi "; then
+      echo "🔑 SSH key not detected for $HOST. Please ensure your SSH agent or key is loaded."
+    fi
+  elif git ls-remote "$TEST_URL" HEAD >/dev/null 2>&1; then
+    echo "🔓 Public repository accessible without credentials."
+  else
+    echo "🔒 Private repository detected. Setting up GitHub authentication..."
+    brew install gh
     if ! gh auth status >/dev/null 2>&1; then
-      echo "🌐 Authenticating with GitHub to pull private dotfiles..."
+      echo "🌐 Authenticating with GitHub to access $DOTFILES_REPO..."
       gh auth login -p https -w
     fi
     gh auth setup-git
-    DOTFILES_REPO="https://github.com/dragosmiron/dotfiles-private.git"
+    DOTFILES_REPO="$TEST_URL"
   fi
 
   if [ -d "$HOME/.local/share/chezmoi/.git" ]; then
     echo "📥 Pulling latest dotfile changes via Chezmoi..."
     chezmoi update --force
   else
-    echo "📥 Initializing and applying private dotfiles via Chezmoi..."
+    echo "📥 Initializing and applying dotfiles from $DOTFILES_REPO via Chezmoi..."
     chezmoi init --apply --force "$DOTFILES_REPO"
   fi
 else
-  echo "⏭️  Skipping personal Chezmoi dotfiles sync (baseline bootstrap complete)."
+  echo "⏭️  Skipping Chezmoi dotfiles sync (minimal baseline bootstrap complete)."
 fi
 
 echo "✅ Mac bootstrap completed successfully!"
