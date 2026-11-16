@@ -1,6 +1,49 @@
 #!/usr/bin/env bash
 set -e
 
+# Default configuration flags
+RUN_DOTFILES="${BOOTSTRAP_FULL:-}"
+CLI_ONLY="${BOOTSTRAP_CLI_ONLY:-false}"
+
+# Parse command line options
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --full|--dotfiles)
+      RUN_DOTFILES=true
+      shift
+      ;;
+    --baseline)
+      RUN_DOTFILES=false
+      shift
+      ;;
+    --cli-only)
+      CLI_ONLY=true
+      shift
+      ;;
+    -h|--help)
+      echo "Usage: ./bootstrap.sh [OPTIONS]"
+      echo ""
+      echo "Additive and idempotent macOS bootstrap script."
+      echo ""
+      echo "Options:"
+      echo "  --baseline       Run baseline setup only (installs tools & settings; skips private Chezmoi dotfiles)"
+      echo "  --full           Run baseline setup AND pull/apply personal Chezmoi dotfiles"
+      echo "  --cli-only       Install CLI developer runtimes only (skips GUI casks and Rex Terminal)"
+      echo "  -h, --help       Show this help message"
+      echo ""
+      echo "Environment variables:"
+      echo "  BOOTSTRAP_FULL=1       Equivalent to --full"
+      echo "  BOOTSTRAP_CLI_ONLY=1   Equivalent to --cli-only"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      echo "Run with --help for usage."
+      exit 1
+      ;;
+  esac
+done
+
 echo "🚀 Starting automated Mac bootstrap..."
 
 # 1. Xcode Command Line Tools
@@ -28,56 +71,104 @@ if ! command -v brew >/dev/null 2>&1; then
   fi
 fi
 
-# 3. Chezmoi, GitHub CLI & Private Dotfiles
-echo "⚙️  Installing Chezmoi and GitHub CLI..."
-brew install chezmoi gh
-
-# Determine Git authentication for private dotfiles
-DOTFILES_REPO="git@github.com:dragosmiron/dotfiles-private.git"
-
-if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
-  echo "🔑 SSH key not detected for GitHub. Checking GitHub CLI auth..."
-  if ! gh auth status >/dev/null 2>&1; then
-    echo "🌐 Authenticating with GitHub to pull private dotfiles..."
-    gh auth login -p https -w
-  fi
-  gh auth setup-git
-  DOTFILES_REPO="https://github.com/dragosmiron/dotfiles-private.git"
-fi
-
-if [ -d "$HOME/.local/share/chezmoi/.git" ]; then
-  echo "📥 Pulling latest dotfile changes via Chezmoi..."
-  chezmoi update --force
+# 3. Locate baseline Brewfile
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/Brewfile" ]; then
+  BREWFILE="$SCRIPT_DIR/Brewfile"
+elif [ -f "$HOME/.Brewfile" ]; then
+  BREWFILE="$HOME/.Brewfile"
 else
-  echo "📥 Initializing and applying private dotfiles via Chezmoi..."
-  chezmoi init --apply --force "$DOTFILES_REPO"
+  BREWFILE="/tmp/bootstrap-mac-Brewfile"
+  echo "📥 Fetching baseline Brewfile..."
+  curl -fsSL -o "$BREWFILE" "https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/Brewfile"
 fi
 
-# 4. Restore All Packages & Apps
-if [ -f "$HOME/.Brewfile" ]; then
-  echo "📦 Installing all applications and tools from Brewfile (adopting existing apps)..."
-  brew bundle --file="$HOME/.Brewfile" --no-upgrade || brew bundle --file="$HOME/.Brewfile" || {
+# 4. Install Baseline Packages & Tools (Additive only)
+if [ "$CLI_ONLY" = true ]; then
+  echo "📦 Installing baseline CLI tools from Brewfile (--cli-only mode)..."
+  grep -v '^cask ' "$BREWFILE" | brew bundle --file=- --no-upgrade || grep -v '^cask ' "$BREWFILE" | brew bundle --file=- || true
+else
+  echo "📦 Installing baseline packages and applications from Brewfile (adopting existing apps)..."
+  brew bundle --file="$BREWFILE" --no-upgrade || brew bundle --file="$BREWFILE" || {
     echo "⚠️  Note: Some Brewfile packages or casks may require manual intervention or password prompt."
   }
 fi
 
-# 5. Install Rex Terminal (Direct Preview DMG)
-if [ ! -d "/Applications/Rex Beta.app" ]; then
-  echo "📥 Installing Rex Terminal..."
-  curl -fsSL -o /tmp/rex.dmg "https://blob.superlogical.com/download/rex-app/preview/latest.dmg"
-  hdiutil detach /Volumes/Rex -quiet 2>/dev/null || true
-  hdiutil attach /tmp/rex.dmg -mountpoint /Volumes/Rex -nobrowse -quiet
-  cp -R "/Volumes/Rex/Rex Beta.app" /Applications/
-  hdiutil detach /Volumes/Rex -quiet 2>/dev/null || true
-  rm -f /tmp/rex.dmg
+# 5. Shell Ergonomics in ~/.zshrc (Guarded marked block, never overwrites existing config)
+if ! grep -q "# >>> bootstrap-mac >>>" "$HOME/.zshrc" 2>/dev/null; then
+  echo "🐚 Adding modern shell ergonomics block to ~/.zshrc..."
+  cat <<'EOF' >> "$HOME/.zshrc"
+
+# >>> bootstrap-mac >>>
+# --- Modern Shell Power Tools (Guarded) ---
+# 0. Ensure Homebrew environment is initialized (essential for non-login interactive shells)
+if ! command -v brew >/dev/null 2>&1; then
+  if [[ -x "/opt/homebrew/bin/brew" ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -x "/usr/local/bin/brew" ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  fi
 fi
 
-if [ -d "/Applications/Rex Beta.app" ]; then
-  mkdir -p "$HOME/.local/bin"
-  ln -sf "/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex" "$HOME/.local/bin/rex"
+# 1. Zoxide: smart directory jumping (e.g. `z proj`)
+if command -v zoxide >/dev/null 2>&1; then
+  eval "$(zoxide init zsh)"
 fi
 
-# 6. macOS System Preferences
+# 2. FZF: interactive fuzzy history (Ctrl+R) and file picker (Ctrl+T)
+if command -v fzf >/dev/null 2>&1; then
+  source <(fzf --zsh)
+fi
+
+# 3. Modern CLI aliases (safe, plain output)
+if command -v bat >/dev/null 2>&1; then
+  alias cat="bat --plain --paging=never"
+fi
+
+if command -v eza >/dev/null 2>&1; then
+  alias ls="eza --icons --group-directories-first"
+  alias ll="eza -la --icons --git --group-directories-first"
+  alias tree="eza --tree --icons"
+fi
+
+if command -v lazygit >/dev/null 2>&1; then
+  alias lg="lazygit"
+fi
+
+# 4. Guarded auto-suggestions and syntax highlighting (syntax-highlighting must load last)
+_BREW_PREFIX="${HOMEBREW_PREFIX:-/opt/homebrew}"
+if [[ -r "$_BREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh" ]]; then
+  source "$_BREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+fi
+if [[ -r "$_BREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]]; then
+  source "$_BREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+fi
+unset _BREW_PREFIX
+# <<< bootstrap-mac <<<
+EOF
+else
+  echo "🐚 Modern shell ergonomics already present in ~/.zshrc."
+fi
+
+# 6. Install Rex Terminal (Direct Preview DMG, skipped if --cli-only)
+if [ "$CLI_ONLY" != true ]; then
+  if [ ! -d "/Applications/Rex Beta.app" ]; then
+    echo "📥 Installing Rex Terminal..."
+    curl -fsSL -o /tmp/rex.dmg "https://blob.superlogical.com/download/rex-app/preview/latest.dmg"
+    hdiutil detach /Volumes/Rex -quiet 2>/dev/null || true
+    hdiutil attach /tmp/rex.dmg -mountpoint /Volumes/Rex -nobrowse -quiet
+    cp -R "/Volumes/Rex/Rex Beta.app" /Applications/
+    hdiutil detach /Volumes/Rex -quiet 2>/dev/null || true
+    rm -f /tmp/rex.dmg
+  fi
+
+  if [ -d "/Applications/Rex Beta.app" ]; then
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex" "$HOME/.local/bin/rex"
+  fi
+fi
+
+# 7. macOS System Preferences
 echo "🍎 Applying macOS system preferences..."
 mkdir -p "$HOME/Desktop/Screenshots"
 defaults write com.apple.screencapture location "$HOME/Desktop/Screenshots"
@@ -93,5 +184,49 @@ fi
 
 killall Finder 2>/dev/null || true
 killall SystemUIServer 2>/dev/null || true
+
+# 8. Optional Personal Dotfiles via Chezmoi
+if [ -z "$RUN_DOTFILES" ]; then
+  if [ -t 0 ] || [ -c /dev/tty ]; then
+    echo ""
+    read -r -p "🔐 Would you like to also apply your private Chezmoi dotfiles (dragosmiron/dotfiles-private)? [y/N]: " REPLY </dev/tty || REPLY=""
+    case "$REPLY" in
+      [yY][eE][sS]|[yY])
+        RUN_DOTFILES=true
+        ;;
+      *)
+        RUN_DOTFILES=false
+        ;;
+    esac
+  else
+    RUN_DOTFILES=false
+  fi
+fi
+
+if [ "$RUN_DOTFILES" = true ]; then
+  echo "⚙️  Installing Chezmoi and GitHub CLI..."
+  brew install chezmoi gh
+
+  DOTFILES_REPO="git@github.com:dragosmiron/dotfiles-private.git"
+  if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
+    echo "🔑 SSH key not detected for GitHub. Checking GitHub CLI auth..."
+    if ! gh auth status >/dev/null 2>&1; then
+      echo "🌐 Authenticating with GitHub to pull private dotfiles..."
+      gh auth login -p https -w
+    fi
+    gh auth setup-git
+    DOTFILES_REPO="https://github.com/dragosmiron/dotfiles-private.git"
+  fi
+
+  if [ -d "$HOME/.local/share/chezmoi/.git" ]; then
+    echo "📥 Pulling latest dotfile changes via Chezmoi..."
+    chezmoi update --force
+  else
+    echo "📥 Initializing and applying private dotfiles via Chezmoi..."
+    chezmoi init --apply --force "$DOTFILES_REPO"
+  fi
+else
+  echo "⏭️  Skipping personal Chezmoi dotfiles sync (baseline bootstrap complete)."
+fi
 
 echo "✅ Mac bootstrap completed successfully!"

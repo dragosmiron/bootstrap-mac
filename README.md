@@ -1,41 +1,66 @@
 # Mac Bootstrap (`bootstrap-mac`)
 
-Automated, idempotent macOS machine bootstrapping and environment provisioning.
+Automated, idempotent, and non-destructive macOS bootstrapping and baseline provisioning.
 
 ## Overview
 
-This repository provides a single-command bootstrap for a fresh or existing Mac setup, managing tools, configurations, and system preferences across:
+This repository provides a single-command setup for **brand-new Macs** as well as **existing or secondary machines**. It is designed to be **purely additive**:
 
-- **Xcode Command Line Tools**: Base developer toolchain.
-- **Homebrew**: Package management for CLI tools, runtimes, and GUI applications (`~/.Brewfile`).
-- **Chezmoi**: Private dotfiles management syncing `.zshrc`, `.gitignore_global`, and `.Brewfile` from `dragosmiron/dotfiles-private`.
-- **Rex Terminal**: Direct automated DMG installation & CLI symlinking (`~/.local/bin/rex`).
-- **macOS System Defaults**: Fast key repeating, dedicated screenshot routing, pathbars, and `.DS_Store` suppression.
+- **Non-Destructive**: Never overwrites your existing `~/.zshrc` or personalized configs; only appends guarded power tools if missing.
+- **Additive Software Installation**: Uses `Brewfile` with `adopt: true` so it only installs missing tools and never deletes or replaces existing applications.
+- **Decoupled Dotfiles**: Baseline bootstrap installs core tools and system settings independently; personal dotfiles (`dotfiles-private` via Chezmoi) are an optional overlay.
 
 ---
 
-## Quickstart on a Brand New Mac
+## Quickstart
 
-To provision a fresh Mac from scratch, paste this single command into Terminal:
+### 1. Interactive Setup (Universal One-Liner)
+
+Run directly in Terminal:
 
 ```bash
 /usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)"
 ```
 
-### What happens automatically:
-
-1. **Xcode Command Line Tools**: Detected or installed automatically.
-2. **Homebrew**: Installs Homebrew if missing and configures `$PATH`.
-3. **Chezmoi & GitHub CLI**: Installs both via Homebrew.
-4. **GitHub Authentication**: Checks if SSH keys or `gh` auth are present. If you're on a blank Mac, it runs `gh auth login -p https -w` to log you into GitHub via browser in 1 click, then configures `git` credentials.
-5. **Private Dotfiles**: Clones and applies `dragosmiron/dotfiles-private` via Chezmoi, laying down your `~/.Brewfile`, `~/.zshrc`, and `~/.gitignore_global`.
-6. **Applications & Runtimes**: Runs `brew bundle` with `--adopt` to install all developer CLI tools, packages, and GUI casks without conflicts.
-7. **Rex Terminal**: Downloads the latest Rex Beta DMG and symlinks the CLI to `~/.local/bin/rex`.
-8. **System Preferences**: Applies all Finder, keyboard, and screenshot defaults.
+During execution, it will install the baseline environment and prompt whether you want to also pull and apply your private Chezmoi dotfiles (`[y/N]`).
 
 ---
 
-## Provisioned Stack
+### 2. Execution Modes & Command Flags
+
+You can control exactly how much or how little is applied:
+
+| Command | Behavior |
+| :--- | :--- |
+| `./bootstrap.sh` | **Interactive**: Installs baseline stack and asks before applying personal Chezmoi dotfiles. |
+| `./bootstrap.sh --baseline` | **Additive Baseline Only**: Installs tools, shell ergonomics, and defaults; completely skips personal dotfiles. |
+| `./bootstrap.sh --full` | **Full Machine Provisioning**: Installs baseline stack AND pulls/applies private Chezmoi dotfiles. |
+| `./bootstrap.sh --cli-only` | **Headless / Server Mode**: Installs only CLI runtimes and tools; skips all GUI casks and Rex Terminal. |
+
+#### Environment Variables for Automation:
+```bash
+# Automated full setup on a new machine:
+BOOTSTRAP_FULL=1 /usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)"
+
+# Automated baseline-only setup (safe on work or existing Macs):
+BOOTSTRAP_FULL=0 /usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)"
+```
+
+---
+
+## What `bootstrap.sh` Does Automatically
+
+1. **Xcode Command Line Tools**: Checks and prompts for installation if missing.
+2. **Homebrew**: Installs Homebrew non-interactively if missing and configures `$PATH`.
+3. **Baseline Software (`Brewfile`)**: Installs CLI developer tools and GUI casks (uses local `Brewfile` if cloned, or fetches the baseline manifest via raw GitHub).
+4. **Shell Ergonomics (`~/.zshrc`)**: Appends a clearly marked `# >>> bootstrap-mac >>>` block with Zoxide, FZF, and modern aliases. If the block already exists, it is untouched.
+5. **Rex Terminal**: Installs Rex Beta and creates the CLI symlink at `~/.local/bin/rex` (skipped if `--cli-only`).
+6. **macOS System Defaults**: Sets screenshot routing, fast key repeats, Finder pathbar, and `.DS_Store` suppression.
+7. **Optional Personal Chezmoi Dotfiles**: If selected, installs `chezmoi` and `gh`, establishes authentication, and syncs `dragosmiron/dotfiles-private`.
+
+---
+
+## Baseline Stack Included
 
 ### CLI Runtimes & Developer Tools
 - **Runtimes:** `node`, `go`, `python@3.12`
@@ -54,32 +79,17 @@ To provision a fresh Mac from scratch, paste this single command into Terminal:
 
 ---
 
-## System Defaults Applied
-
-1. **Screenshots:** Routed to dedicated `~/Desktop/Screenshots/`.
-2. **Finder:**
-   - Always display file extensions.
-   - Show bottom breadcrumb pathbar.
-   - Suppress creation of `.DS_Store` files on network and USB volumes.
-3. **Keyboard:** Disabled press-and-hold accent popup to enable rapid key repeat in terminal and editors.
-4. **Git Hygiene:** Global excludes registered from `~/.gitignore_global`.
-
----
-
 ## Verification
 
 To verify the installation on an active machine:
 
 ```bash
-# 1. Check CLI runtimes & tools
+# Check CLI runtimes & tools
 which fzf zoxide bat eza lazygit node go python3.12 rex
 
-# 2. Verify Homebrew bundle state
-brew bundle check --no-upgrade --file="$HOME/.Brewfile"
+# Verify Homebrew bundle state
+brew bundle check --no-upgrade --file="./Brewfile"
 
-# 3. Test shell syntax
+# Test shell syntax
 zsh -n ~/.zshrc
-
-# 4. Check Chezmoi dotfiles tracking
-chezmoi managed
 ```
