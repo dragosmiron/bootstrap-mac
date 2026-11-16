@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -e
+
+echo "🚀 Starting automated Mac bootstrap..."
+
+# 1. Xcode Command Line Tools
+if ! xcode-select -p >/dev/null 2>&1; then
+  echo "📦 Installing Xcode Command Line Tools..."
+  xcode-select --install
+  echo "Please complete the prompt and re-run this script."
+  exit 1
+fi
+
+# 2. Homebrew
+if ! command -v brew >/dev/null 2>&1; then
+  echo "🍺 Installing Homebrew..."
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+fi
+
+# 3. Chezmoi & Private Dotfiles
+echo "⚙️  Installing Chezmoi and pulling private dotfiles..."
+brew install chezmoi
+chezmoi init --apply git@github.com:dragosmiron/dotfiles-private.git
+
+# 4. Restore All Packages & Apps
+if [ -f "$HOME/.Brewfile" ]; then
+  echo "📦 Installing all applications and tools from Brewfile..."
+  brew bundle --file="$HOME/.Brewfile" --no-upgrade || brew bundle --file="$HOME/.Brewfile"
+fi
+
+# 5. Install Rex Terminal (Direct Preview DMG)
+if [ ! -d "/Applications/Rex Beta.app" ]; then
+  echo "📥 Installing Rex Terminal..."
+  curl -fsSL -o /tmp/rex.dmg "https://blob.superlogical.com/download/rex-app/preview/latest.dmg"
+  hdiutil attach /tmp/rex.dmg -mountpoint /Volumes/Rex -nobrowse -quiet
+  cp -R "/Volumes/Rex/Rex Beta.app" /Applications/
+  hdiutil detach /Volumes/Rex -quiet
+  rm /tmp/rex.dmg
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex" "$HOME/.local/bin/rex"
+fi
+
+# 6. macOS System Preferences
+echo "🍎 Applying macOS system preferences..."
+mkdir -p "$HOME/Desktop/Screenshots"
+defaults write com.apple.screencapture location "$HOME/Desktop/Screenshots"
+defaults write NSGlobalDomain AppleShowAllExtensions -bool true
+defaults write com.apple.finder ShowPathbar -bool true
+defaults write -g ApplePressAndHoldEnabled -bool false
+defaults write com.apple.desktopservices DSDontWriteNetworkStores -bool true
+defaults write com.apple.desktopservices DSDontWriteUSBStores -bool true
+
+if [ -f "$HOME/.gitignore_global" ]; then
+  git config --global core.excludesfile "$HOME/.gitignore_global"
+fi
+
+killall Finder 2>/dev/null || true
+killall SystemUIServer 2>/dev/null || true
+
+echo "✅ Mac bootstrap completed successfully!"
