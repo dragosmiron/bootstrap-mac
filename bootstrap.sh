@@ -3,6 +3,7 @@ set -e
 
 # Cleanup temporary scratch files on exit
 cleanup() {
+  hdiutil detach /Volumes/Rex -quiet 2>/dev/null || true
   rm -f /tmp/bootstrap-mac-Brewfile /tmp/rex.dmg /tmp/brew-* 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -129,7 +130,10 @@ if ! command -v brew >/dev/null 2>&1; then
 fi
 
 # 3. Locate baseline Brewfile
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+SCRIPT_DIR=""
+if [ -n "${BASH_SOURCE[0]:-}" ]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+fi
 if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/Brewfile" ]; then
   BREWFILE="$SCRIPT_DIR/Brewfile"
 else
@@ -152,7 +156,7 @@ fi
 # Optional dump/update of ~/.Brewfile with all currently installed packages
 if [ -z "$DUMP_BREWFILE" ]; then
   TMP_CANDIDATE="/tmp/brew-candidate-$$.txt"
-  brew bundle dump --file="$TMP_CANDIDATE" 2>/dev/null || true
+  brew bundle dump --force --file="$TMP_CANDIDATE" 2>/dev/null || true
   if [ -f "$TMP_CANDIDATE" ]; then
     if ! grep -q "cask_args.*adopt:" "$TMP_CANDIDATE" 2>/dev/null; then
       TMP_CANDIDATE_FMT="/tmp/brew-candidate-fmt-$$.txt"
@@ -187,7 +191,13 @@ if [ -z "$DUMP_BREWFILE" ]; then
             fi
             ;;
           [yY][eE][sS]|[yY])
-            DUMP_BREWFILE=true
+            echo "📋 Updating ~/.Brewfile to reflect current machine state..."
+            if [ -f "$HOME/.Brewfile" ]; then
+              cp "$HOME/.Brewfile" "$HOME/.Brewfile.bak" 2>/dev/null || true
+            fi
+            mv "$TMP_CANDIDATE" "$HOME/.Brewfile"
+            echo "✅ ~/.Brewfile updated (backup saved to ~/.Brewfile.bak)."
+            DUMP_BREWFILE=false
             break
             ;;
           *)
@@ -236,17 +246,22 @@ if ! command -v brew >/dev/null 2>&1; then
   fi
 fi
 
-# 1. Zoxide: smart directory jumping (e.g. `z proj`)
+# 1. User local binary path (e.g. Rex CLI, user scripts)
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+
+# 2. Zoxide: smart directory jumping (e.g. `z proj`)
 if command -v zoxide >/dev/null 2>&1; then
   eval "$(zoxide init zsh)"
 fi
 
-# 2. FZF: interactive fuzzy history (Ctrl+R) and file picker (Ctrl+T)
+# 3. FZF: interactive fuzzy history (Ctrl+R) and file picker (Ctrl+T)
 if command -v fzf >/dev/null 2>&1; then
   source <(fzf --zsh)
 fi
 
-# 3. Modern CLI aliases (safe, plain output)
+# 4. Modern CLI aliases (safe, plain output)
 if command -v bat >/dev/null 2>&1; then
   alias cat="bat --plain --paging=never"
 fi
@@ -261,7 +276,7 @@ if command -v lazygit >/dev/null 2>&1; then
   alias lg="lazygit"
 fi
 
-# 4. Guarded auto-suggestions and syntax highlighting (syntax-highlighting must load last)
+# 5. Guarded auto-suggestions and syntax highlighting (syntax-highlighting must load last)
 _BREW_PREFIX="${HOMEBREW_PREFIX:-/opt/homebrew}"
 if [[ -r "$_BREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh" ]]; then
   source "$_BREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
@@ -304,10 +319,6 @@ defaults write -g ApplePressAndHoldEnabled -bool false
 defaults write com.apple.desktopservices DSDontWriteNetworkStores -bool true
 defaults write com.apple.desktopservices DSDontWriteUSBStores -bool true
 
-if [ -f "$HOME/.gitignore_global" ]; then
-  git config --global core.excludesfile "$HOME/.gitignore_global"
-fi
-
 killall Finder 2>/dev/null || true
 killall SystemUIServer 2>/dev/null || true
 
@@ -341,7 +352,9 @@ fi
 if [ "$RUN_DOTFILES" = true ]; then
   DOTFILES_REPO="${DOTFILES_REPO:-$DEFAULT_DOTFILES_REPO}"
   echo "⚙️  Preparing Chezmoi for dotfiles repo: $DOTFILES_REPO..."
-  brew install chezmoi
+  if ! command -v chezmoi >/dev/null 2>&1; then
+    brew install chezmoi
+  fi
 
   # Normalize repository URL for reachability test
   TEST_URL="$DOTFILES_REPO"
@@ -357,11 +370,13 @@ if [ "$RUN_DOTFILES" = true ]; then
     if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T "git@$HOST" 2>&1 | grep -qE "successfully authenticated|Hi "; then
       echo "🔑 SSH key not detected for $HOST. Please ensure your SSH agent or key is loaded."
     fi
-  elif git ls-remote "$TEST_URL" HEAD >/dev/null 2>&1; then
+  elif GIT_TERMINAL_PROMPT=0 git ls-remote "$TEST_URL" HEAD >/dev/null 2>&1; then
     echo "🔓 Public repository accessible without credentials."
   else
     echo "🔒 Private repository detected. Setting up GitHub authentication..."
-    brew install gh
+    if ! command -v gh >/dev/null 2>&1; then
+      brew install gh
+    fi
     if ! gh auth status >/dev/null 2>&1; then
       echo "🌐 Authenticating with GitHub to access $DOTFILES_REPO..."
       gh auth login -p https -w
@@ -379,6 +394,11 @@ if [ "$RUN_DOTFILES" = true ]; then
   fi
 else
   echo "⏭️  Skipping Chezmoi dotfiles sync (minimal bootstrap complete)."
+fi
+
+# Ensure git global ignore is configured if present
+if [ -f "$HOME/.gitignore_global" ]; then
+  git config --global core.excludesfile "$HOME/.gitignore_global"
 fi
 
 echo "✅ Mac bootstrap completed successfully!"
