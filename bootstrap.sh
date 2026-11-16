@@ -398,7 +398,7 @@ fi
 
 # Ensure git global ignore is configured if present
 if [ -f "$HOME/.gitignore_global" ]; then
-  git config --global core.excludesfile "$HOME/.gitignore_global"
+  git config --global core.excludesfile "~/.gitignore_global"
 fi
 
 echo "✅ Mac bootstrap completed successfully!"
