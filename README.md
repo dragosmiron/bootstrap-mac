@@ -37,6 +37,8 @@ You can control exactly how much or how little is applied:
 | `./bootstrap.sh --dotfiles <repo>` | **Custom Dotfiles Sync**: Applies baseline stack and pulls Chezmoi dotfiles from **any** repo (e.g. `username/repo` or full URL, public or private). |
 | `./bootstrap.sh --full` | **Default Personal Setup**: Applies baseline stack and syncs default personal repo (`dragosmiron/dotfiles-private`). |
 | `./bootstrap.sh --cli-only` | **Headless / Server Mode**: Installs only CLI runtimes and tools; skips all GUI casks and Rex Terminal. |
+| `./bootstrap.sh --dump` | **Refresh Brewfile**: Dumps/updates `~/.Brewfile` with all currently installed packages on the machine. |
+| `./bootstrap.sh --no-dump` | **Skip Brewfile Dump**: Skips the Brewfile dump prompt without asking. |
 
 #### One-Liner Automation Examples:
 

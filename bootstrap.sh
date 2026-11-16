@@ -6,6 +6,7 @@ DEFAULT_DOTFILES_REPO="dragosmiron/dotfiles-private"
 DOTFILES_REPO="${BOOTSTRAP_DOTFILES:-${DOTFILES_REPO:-}}"
 RUN_DOTFILES="${BOOTSTRAP_FULL:-}"
 CLI_ONLY="${BOOTSTRAP_CLI_ONLY:-false}"
+DUMP_BREWFILE="${BOOTSTRAP_DUMP:-}"
 
 if [ -n "$BOOTSTRAP_BASELINE" ] && [ "$BOOTSTRAP_BASELINE" != "0" ]; then
   RUN_DOTFILES=false
@@ -46,6 +47,14 @@ while [[ $# -gt 0 ]]; do
       CLI_ONLY=true
       shift
       ;;
+    --dump)
+      DUMP_BREWFILE=true
+      shift
+      ;;
+    --no-dump)
+      DUMP_BREWFILE=false
+      shift
+      ;;
     -h|--help)
       echo "Usage: ./bootstrap.sh [OPTIONS]"
       echo ""
@@ -56,6 +65,8 @@ while [[ $# -gt 0 ]]; do
       echo "  --full                  Full setup with default personal dotfiles ($DEFAULT_DOTFILES_REPO)"
       echo "  --dotfiles [REPO]       Pull and apply Chezmoi dotfiles from any Git repo (URL or username/repo)"
       echo "  --cli-only              Install CLI runtimes only (skips GUI casks and Rex Terminal)"
+      echo "  --dump                  Update/dump ~/.Brewfile with currently installed packages"
+      echo "  --no-dump               Skip updating ~/.Brewfile without prompting"
       echo "  -h, --help              Show this help message"
       echo ""
       echo "Examples:"
@@ -64,12 +75,14 @@ while [[ $# -gt 0 ]]; do
       echo "  ./bootstrap.sh --dotfiles username/dotfiles"
       echo "  ./bootstrap.sh --dotfiles https://github.com/myorg/work-dotfiles.git"
       echo "  ./bootstrap.sh --cli-only --baseline"
+      echo "  ./bootstrap.sh --baseline --dump"
       echo ""
       echo "Environment variables:"
       echo "  BOOTSTRAP_BASELINE=1             Equivalent to --baseline"
       echo "  BOOTSTRAP_FULL=1                 Equivalent to --full"
       echo "  BOOTSTRAP_DOTFILES=\"user/repo\"   Equivalent to --dotfiles user/repo"
       echo "  BOOTSTRAP_CLI_ONLY=1             Equivalent to --cli-only"
+      echo "  BOOTSTRAP_DUMP=1                 Equivalent to --dump"
       exit 0
       ;;
     *)
@@ -128,6 +141,40 @@ else
   brew bundle --file="$BREWFILE" --no-upgrade || brew bundle --file="$BREWFILE" || {
     echo "⚠️  Note: Some Brewfile packages or casks may require manual intervention or password prompt."
   }
+fi
+
+# Optional dump/update of ~/.Brewfile with all currently installed packages
+if [ -z "$DUMP_BREWFILE" ]; then
+  if [ -t 0 ] || [ -c /dev/tty ]; then
+    echo ""
+    read -r -p "📋 Would you like to update/dump ~/.Brewfile with all currently installed packages? [y/N]: " REPLY_DUMP </dev/tty || REPLY_DUMP=""
+    case "$REPLY_DUMP" in
+      [yY][eE][sS]|[yY])
+        DUMP_BREWFILE=true
+        ;;
+      *)
+        DUMP_BREWFILE=false
+        ;;
+    esac
+  else
+    DUMP_BREWFILE=false
+  fi
+fi
+
+if [ "$DUMP_BREWFILE" = true ]; then
+  echo "📋 Updating ~/.Brewfile to reflect current machine state..."
+  if [ -f "$HOME/.Brewfile" ]; then
+    cp "$HOME/.Brewfile" "$HOME/.Brewfile.bak" 2>/dev/null || true
+  fi
+  brew bundle dump --force --file="$HOME/.Brewfile"
+  if ! grep -q "cask_args.*adopt:" "$HOME/.Brewfile" 2>/dev/null; then
+    TMP_DUMP="$(mktemp)"
+    echo 'cask_args appdir: "/Applications", adopt: true' > "$TMP_DUMP"
+    echo "" >> "$TMP_DUMP"
+    cat "$HOME/.Brewfile" >> "$TMP_DUMP"
+    mv "$TMP_DUMP" "$HOME/.Brewfile"
+  fi
+  echo "✅ ~/.Brewfile updated (backup saved to ~/.Brewfile.bak)."
 fi
 
 # 5. Shell Ergonomics in ~/.zshrc (Guarded marked block, never overwrites existing config)
