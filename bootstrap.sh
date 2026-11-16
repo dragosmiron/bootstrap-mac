@@ -19,7 +19,7 @@ if ! command -v brew >/dev/null 2>&1; then
     eval "$(/usr/local/bin/brew shellenv)"
   else
     echo "🍺 Installing Homebrew..."
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     if [ -x "/opt/homebrew/bin/brew" ]; then
       eval "$(/opt/homebrew/bin/brew shellenv)"
     elif [ -x "/usr/local/bin/brew" ]; then
@@ -45,13 +45,17 @@ if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T git@github.com 
   DOTFILES_REPO="https://github.com/dragosmiron/dotfiles-private.git"
 fi
 
-echo "📥 Pulling and applying private dotfiles via Chezmoi..."
-chezmoi init --apply --force "$DOTFILES_REPO"
+if [ -d "$HOME/.local/share/chezmoi/.git" ]; then
+  echo "📥 Pulling latest dotfile changes via Chezmoi..."
+  chezmoi update --force
+else
+  echo "📥 Initializing and applying private dotfiles via Chezmoi..."
+  chezmoi init --apply --force "$DOTFILES_REPO"
+fi
 
 # 4. Restore All Packages & Apps
 if [ -f "$HOME/.Brewfile" ]; then
   echo "📦 Installing all applications and tools from Brewfile (adopting existing apps)..."
-  export HOMEBREW_CASK_OPTS="--adopt"
   brew bundle --file="$HOME/.Brewfile" --no-upgrade || brew bundle --file="$HOME/.Brewfile" || {
     echo "⚠️  Note: Some Brewfile packages or casks may require manual intervention or password prompt."
   }
@@ -61,6 +65,7 @@ fi
 if [ ! -d "/Applications/Rex Beta.app" ]; then
   echo "📥 Installing Rex Terminal..."
   curl -fsSL -o /tmp/rex.dmg "https://blob.superlogical.com/download/rex-app/preview/latest.dmg"
+  hdiutil detach /Volumes/Rex -quiet 2>/dev/null || true
   hdiutil attach /tmp/rex.dmg -mountpoint /Volumes/Rex -nobrowse -quiet
   cp -R "/Volumes/Rex/Rex Beta.app" /Applications/
   hdiutil detach /Volumes/Rex -quiet 2>/dev/null || true
