@@ -15,7 +15,23 @@ This repository provides a single-command setup for **brand-new Macs** as well a
 
 ## Quickstart
 
-### 1. Interactive Setup (Universal One-Liner)
+### 1. Agent-Driven Setup (Antigravity, Claude Code, Cursor)
+
+If you are using an AI coding assistant (such as Antigravity, Claude Code, or Cursor), point the agent to [AGENT.md](AGENT.md):
+
+```text
+"Bootstrap this Mac following AGENT.md"
+```
+
+The agent executes the Ponytail-refined 4-phase protocol:
+- **1-Question Upfront Flow:** Asks once whether you want a Full (personal Chezmoi dotfiles) or Minimal (core tools only) setup.
+- **Headless Execution:** Runs `./bootstrap.sh --[full|minimal] --no-dump` deterministically with zero terminal hangs.
+- **Automated Verification:** Runs health checks across runtimes (`node`, `go`, `python3.12`), power tools (`rex`, `fzf`, `zoxide`, `eza`, `bat`, `lazygit`), and Homebrew bundle integrity.
+- **Smart Follow-ups:** Checks if unmanaged packages exist before prompting about `~/.Brewfile` and configures Git author identity if missing.
+
+---
+
+### 2. Interactive Setup (Universal One-Liner)
 
 Run directly in Terminal:
 
@@ -27,7 +43,7 @@ During execution, it installs the baseline environment and prompts whether you w
 
 ---
 
-### 2. Execution Modes & Command Flags
+### 3. Execution Modes & Command Flags
 
 You can control exactly how much or how little is applied:
 
