@@ -160,6 +160,35 @@ echo "[6] Brewfile Bundle Integrity"
 capture brew bundle check --no-upgrade --file="$SCRIPT_DIR/../Brewfile"
 assert_eq "Brewfile bundle check (--no-upgrade)" "$RC" "0"
 
+echo "[7] normalize_link and parse_ssh_remote Unit Tests"
+# Source the helper functions directly from bootstrap.sh
+eval "$(sed -n '/^normalize_link() {/,/^}/p' "$BOOTSTRAP_SCRIPT")"
+eval "$(sed -n '/^parse_ssh_remote() {/,/^}/p' "$BOOTSTRAP_SCRIPT")"
+
+assert_eq "scp ssh -> host/path" "$(normalize_link 'git@github.com:me/dots.git')" "github.com/me/dots"
+assert_eq "https -> host/path" "$(normalize_link 'https://github.com/me/dots.git')" "github.com/me/dots"
+assert_eq "group/sub path preserved" "$(normalize_link 'git@gitlab.com:group/sub/dots.git')" "gitlab.com/group/sub/dots"
+# Port from ssh:// URL is stripped; .git suffix removed in both paths
+assert_eq "ssh:// with explicit port stripped" "$(normalize_link 'ssh://git@example.com:2222/repo.git')" "example.com/repo"
+assert_eq "ssh:// no port falls through" "$(normalize_link 'ssh://git@example.com/repo.git')" "example.com/repo"
+assert_eq "same repo cross-format match" "$(normalize_link 'git@github.com:me/dots.git')" "$(normalize_link 'https://github.com/me/dots.git')" "cross-format identity"
+
+# parse_ssh_remote coverage
+parse_ssh_remote "git@github.com:user/repo.git"
+assert_eq "parse_ssh_remote scp user" "$SSH_USER" "git"
+assert_eq "parse_ssh_remote scp host" "$SSH_HOST" "github.com"
+assert_eq "parse_ssh_remote scp port" "$SSH_PORT" ""
+
+parse_ssh_remote "ssh://customuser@gitlab.example.com:2222/group/repo.git"
+assert_eq "parse_ssh_remote ssh:// custom user" "$SSH_USER" "customuser"
+assert_eq "parse_ssh_remote ssh:// host" "$SSH_HOST" "gitlab.example.com"
+assert_eq "parse_ssh_remote ssh:// custom port" "$SSH_PORT" "2222"
+
+parse_ssh_remote "ssh://server.lan/repo.git"
+assert_eq "parse_ssh_remote ssh:// default user" "$SSH_USER" "git"
+assert_eq "parse_ssh_remote ssh:// host no port" "$SSH_HOST" "server.lan"
+assert_eq "parse_ssh_remote ssh:// no port" "$SSH_PORT" ""
+
 echo ""
 echo "=== Summary: $PASSED passed, $FAILED failed ==="
 if [ "$FAILED" -ne 0 ]; then

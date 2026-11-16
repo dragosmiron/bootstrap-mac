@@ -26,11 +26,41 @@ is_full_git_url() {
   esac
 }
 
-# Compares git remotes by host+path: strips scheme, user, port-ish colon and .git
+# Compares git remotes by host+path: strips scheme, user, .git; removes explicit port from ssh:// URLs
 normalize_link() {
-  local u="${1#*//}"
-  u="${u#*@}"
-  printf '%s\n' "${u%.git}" | tr ':' '/'
+  local u="${1#*//}"       # remove http(s)/ssh scheme
+  u="${u#*@}"              # remove user@ prefix
+  if [[ "$u" =~ ^([^:]+):([0-9]+)/(.*)$ ]]; then
+    local p="${BASH_REMATCH[3]}"
+    printf '%s/%s\n' "${BASH_REMATCH[1]}" "${p%.git}"
+  else
+    printf '%s\n' "${u%.git}" | tr ':' '/'
+  fi
+}
+
+# Extracts user, host, and port from an SSH git URL
+parse_ssh_remote() {
+  local target="$1"
+  SSH_USER="git"
+  SSH_PORT=""
+  if [[ "$target" =~ ^ssh:// ]]; then
+    local host_part="${target#ssh://}"
+    if [[ "$host_part" == *@* ]]; then
+      SSH_USER="${host_part%%@*}"
+      host_part="${host_part#*@}"
+    fi
+    host_part="${host_part%%/*}"
+    if [[ "$host_part" == *:* ]]; then
+      SSH_PORT="${host_part#*:}"
+      SSH_HOST="${host_part%%:*}"
+    else
+      SSH_HOST="$host_part"
+    fi
+  else
+    SSH_USER="${target%%@*}"
+    local host_part="${target#*@}"
+    SSH_HOST="${host_part%%:*}"
+  fi
 }
 
 # Environment variable overrides
@@ -181,18 +211,21 @@ else
 fi
 
 # 4. Install Baseline Packages & Tools (Additive only)
+BREW_BUNDLE_RC=0
 if [ "$CLI_ONLY" = true ]; then
   echo "📦 Installing baseline CLI tools from Brewfile (--cli-only mode)..."
-  grep -v '^cask ' "$BREWFILE" | brew bundle --file=- --no-upgrade || grep -v '^cask ' "$BREWFILE" | brew bundle --file=- || true
+  grep -v '^cask ' "$BREWFILE" | brew bundle --file=- --no-upgrade || \
+    grep -v '^cask ' "$BREWFILE" | brew bundle --file=- || BREW_BUNDLE_RC=$?
 else
   echo "📦 Installing baseline packages and applications from Brewfile (adopting existing apps)..."
-  brew bundle --file="$BREWFILE" --no-upgrade || brew bundle --file="$BREWFILE" || {
-    echo "⚠️  Note: Some Brewfile packages or casks may require manual intervention or password prompt."
-  }
+  brew bundle --file="$BREWFILE" --no-upgrade || brew bundle --file="$BREWFILE" || BREW_BUNDLE_RC=$?
+fi
+if [ "$BREW_BUNDLE_RC" -ne 0 ]; then
+  echo "⚠️  Note: Some Brewfile packages or casks failed to install, or may require manual intervention."
 fi
 
 # Optional dump/update of ~/.Brewfile with all currently installed packages
-if [ -z "$DUMP_BREWFILE" ]; then
+if [ "$DUMP_BREWFILE" != false ]; then
   TMP_CANDIDATE="$(mktemp /tmp/brew-candidate.XXXXXX)"
   brew bundle dump --force --file="$TMP_CANDIDATE" 2>/dev/null || true
   if [ -s "$TMP_CANDIDATE" ]; then
@@ -209,6 +242,14 @@ if [ -z "$DUMP_BREWFILE" ]; then
       echo "✨ ~/.Brewfile is already up to date with all installed packages."
       DUMP_BREWFILE=false
       rm -f "$TMP_CANDIDATE" 2>/dev/null || true
+    elif [ "$DUMP_BREWFILE" = true ]; then
+      echo "📋 Updating ~/.Brewfile to reflect current machine state..."
+      if [ -f "$HOME/.Brewfile" ]; then
+        cp "$HOME/.Brewfile" "$HOME/.Brewfile.bak" 2>/dev/null || true
+      fi
+      mv "$TMP_CANDIDATE" "$HOME/.Brewfile"
+      echo "✅ ~/.Brewfile updated (backup saved to ~/.Brewfile.bak)."
+      DUMP_BREWFILE=false
     elif [ -t 0 ] || [ -c /dev/tty ]; then
       while true; do
         echo ""
@@ -256,22 +297,6 @@ if [ -z "$DUMP_BREWFILE" ]; then
   else
     rm -f "$TMP_CANDIDATE" 2>/dev/null || true
   fi
-fi
-
-if [ "$DUMP_BREWFILE" = true ]; then
-  echo "📋 Updating ~/.Brewfile to reflect current machine state..."
-  if [ -f "$HOME/.Brewfile" ]; then
-    cp "$HOME/.Brewfile" "$HOME/.Brewfile.bak" 2>/dev/null || true
-  fi
-  brew bundle dump --force --file="$HOME/.Brewfile"
-  if ! grep -q "cask_args.*adopt:" "$HOME/.Brewfile" 2>/dev/null; then
-    TMP_DUMP="$(mktemp)"
-    echo 'cask_args appdir: "/Applications", adopt: true' > "$TMP_DUMP"
-    echo "" >> "$TMP_DUMP"
-    cat "$HOME/.Brewfile" >> "$TMP_DUMP"
-    mv "$TMP_DUMP" "$HOME/.Brewfile"
-  fi
-  echo "✅ ~/.Brewfile updated (backup saved to ~/.Brewfile.bak)."
 fi
 
 # 5. Shell Ergonomics in ~/.zshrc (Guarded marked block, never overwrites existing config)
@@ -417,29 +442,11 @@ if [ "$RUN_DOTFILES" = true ]; then
     echo "🔑 Using SSH repository: $DOTFILES_REPO"
     # Host-agnostic reachability check: ssh exits 255 only when the connection/auth
     # fails (banners differ per host: GitHub "Hi", GitLab "Welcome", Bitbucket "logged in").
-    SSH_USER=git
-    HOST="$DOTFILES_REPO"
-    PORT=""
-    if [[ "$HOST" =~ ^ssh:// ]]; then
-      HOST="${HOST#ssh://}"
-      if [[ "$HOST" == *@* ]]; then
-        SSH_USER="${HOST%%@*}"
-        HOST="${HOST#*@}"
-      fi
-      HOST="${HOST%%/*}"
-      if [[ "$HOST" == *:* ]]; then
-        PORT="${HOST#*:}"
-        HOST="${HOST%%:*}"
-      fi
-    else
-      SSH_USER="${HOST%%@*}"
-      HOST="${HOST#*@}"
-      HOST="${HOST%%:*}"
-    fi
+    parse_ssh_remote "$DOTFILES_REPO"
     SSH_RC=0
-    ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 -p "${PORT:-22}" -T "$SSH_USER@$HOST" >/dev/null 2>&1 || SSH_RC=$?
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 -p "${SSH_PORT:-22}" -T "$SSH_USER@$SSH_HOST" >/dev/null 2>&1 || SSH_RC=$?
     if [ "$SSH_RC" -eq 255 ]; then
-      echo "⚠️  SSH key not detected for $HOST. Ensure your SSH agent/key is loaded (ssh-add -l)."
+      echo "⚠️  SSH key not detected for $SSH_HOST. Ensure your SSH agent/key is loaded (ssh-add -l)."
     fi
   elif GIT_TERMINAL_PROMPT=0 git ls-remote "$DOTFILES_REPO" HEAD >/dev/null 2>&1; then
     echo "🔓 Public repository accessible without credentials."
@@ -466,6 +473,11 @@ if [ "$RUN_DOTFILES" = true ]; then
     # Refuse to update a source dir that tracks a different repo than the one requested
     # shortcut: normalization compares host+path only, so an explicit :443 or :22 port reads as a different repo and the user is asked to run chezmoi init themselves
     ORIGIN_URL="$(git -C "$HOME/.local/share/chezmoi" remote get-url origin 2>/dev/null || true)"
+    if [ -z "$ORIGIN_URL" ]; then
+      echo "❌ Chezmoi source dir exists but has no 'origin' remote."
+      echo "Re-run with 'chezmoi init --apply \"$DOTFILES_REPO\"' to connect to the correct repo."
+      exit 1
+    fi
     if [ "$(normalize_link "$ORIGIN_URL")" != "$(normalize_link "$DOTFILES_REPO")" ]; then
       echo "❌ Chezmoi is already initialized from a different repository:"
       echo "     existing: $ORIGIN_URL"
