@@ -39,18 +39,15 @@ To provision a fresh Mac from scratch, paste this single command into Terminal:
 
 ### CLI Runtimes & Developer Tools
 - **Runtimes:** `node`, `go`, `python@3.12`
-- **Productivity & Search:** `fzf`, `zoxide`, `bat`, `eza`, `lazygit`, `gh`, `chezmoi`, `mas`
+- **Productivity & Search:** `fzf`, `zoxide`, `bat`, `eza`, `lazygit`, `gh`, `chezmoi`
 - **Shell:** Zsh with `zsh-autosuggestions` and `zsh-syntax-highlighting`
 
 ### GUI Applications (Homebrew Casks)
-- **Essentials & Windows:** Raycast, AltTab
+- **Essentials & Windows:** Raycast, AltTab, KeepingYouAwake
 - **Security & Privacy:** Bitwarden, Little Snitch, NordVPN, NetBird, AdGuard
 - **Productivity & Notes:** Obsidian, Google Chrome, Zed
 - **Virtualization:** OrbStack
 - **Utilities & Media:** Keka, Pearcleaner, VLC, Calibre, Stremio
-
-### Mac App Store (via `mas`)
-- PDFgear (`6469021132`)
 
 ### Non-Homebrew Applications
 - **Rex Terminal Beta**: Installed from direct preview DMG and symlinked to `~/.local/bin/rex`.
