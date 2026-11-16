@@ -4,21 +4,38 @@ set -e
 # Cleanup temporary scratch files on exit
 cleanup() {
   hdiutil detach /Volumes/Rex -quiet 2>/dev/null || true
-  rm -f /tmp/bootstrap-mac-Brewfile /tmp/rex.dmg /tmp/brew-* 2>/dev/null || true
+  rm -f /tmp/bootstrap-mac-Brewfile /tmp/rex.dmg /tmp/brew-* /tmp/brew-candidate* 2>/dev/null || true
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
 # Default configuration flags
-DEFAULT_DOTFILES_REPO="dragosmiron/dotfiles-private"
 DOTFILES_REPO="${BOOTSTRAP_DOTFILES:-${DOTFILES_REPO:-}}"
-RUN_DOTFILES="${BOOTSTRAP_FULL:-}"
-CLI_ONLY="${BOOTSTRAP_CLI_ONLY:-false}"
-DUMP_BREWFILE="${BOOTSTRAP_DUMP:-}"
+RUN_DOTFILES=""
+CLI_ONLY=false
+DUMP_BREWFILE=""
 
-if [ -n "$BOOTSTRAP_MINIMAL" ] && [ "$BOOTSTRAP_MINIMAL" != "0" ]; then
+# Only full clone URLs are accepted (the two forms GitHub shows you):
+#   git@github.com:you/dotfiles.git   or   https://github.com/you/dotfiles.git
+is_full_git_url() {
+  case "$1" in
+    https://*|ssh://*) return 0 ;;
+    *@*:*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Environment variable overrides
+if [ -n "${BOOTSTRAP_MINIMAL:-}" ] && [ "${BOOTSTRAP_MINIMAL}" != "0" ]; then
   RUN_DOTFILES=false
+fi
+if [ -n "${BOOTSTRAP_CLI_ONLY:-}" ] && [ "${BOOTSTRAP_CLI_ONLY}" != "0" ]; then
+  CLI_ONLY=true
+  RUN_DOTFILES="${RUN_DOTFILES:-false}"
+fi
+if [ -n "${BOOTSTRAP_DUMP:-}" ] && [ "${BOOTSTRAP_DUMP}" != "0" ]; then
+  DUMP_BREWFILE=true
 fi
 if [ -n "$DOTFILES_REPO" ]; then
   RUN_DOTFILES=true
@@ -32,28 +49,25 @@ while [[ $# -gt 0 ]]; do
       DOTFILES_REPO=""
       shift
       ;;
-    --full)
-      RUN_DOTFILES=true
-      DOTFILES_REPO="${DOTFILES_REPO:-$DEFAULT_DOTFILES_REPO}"
-      shift
-      ;;
-    --dotfiles=*|--repo=*)
+    --dotfiles=*)
       RUN_DOTFILES=true
       DOTFILES_REPO="${1#*=}"
       shift
       ;;
-    --dotfiles|--repo)
+    --dotfiles)
       RUN_DOTFILES=true
       if [[ -n "${2:-}" ]] && [[ ! "$2" =~ ^- ]]; then
         DOTFILES_REPO="$2"
         shift 2
       else
-        DOTFILES_REPO="$DEFAULT_DOTFILES_REPO"
-        shift
+        echo "Option $1 requires a repository URL."
+        echo "Pass the clone URL GitHub shows you, e.g. git@github.com:you/dotfiles.git"
+        exit 1
       fi
       ;;
     --cli-only)
       CLI_ONLY=true
+      RUN_DOTFILES="${RUN_DOTFILES:-false}"
       shift
       ;;
     --dump)
@@ -71,8 +85,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Options:"
       echo "  --minimal               Minimal setup only (installs tools & settings; skips Chezmoi dotfiles)"
-      echo "  --full                  Full setup with default personal dotfiles ($DEFAULT_DOTFILES_REPO)"
-      echo "  --dotfiles [REPO]       Pull and apply Chezmoi dotfiles from any Git repo (URL or username/repo)"
+      echo "  --dotfiles <url>        Pull and apply Chezmoi dotfiles from a Git clone URL (https:// or git@...)"
       echo "  --cli-only              Install CLI runtimes only (skips GUI casks and Rex Terminal)"
       echo "  --dump                  Update/dump ~/.Brewfile with currently installed packages"
       echo "  --no-dump               Skip updating ~/.Brewfile without prompting"
@@ -80,16 +93,14 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Examples:"
       echo "  ./bootstrap.sh --minimal"
-      echo "  ./bootstrap.sh --full"
-      echo "  ./bootstrap.sh --dotfiles username/dotfiles"
-      echo "  ./bootstrap.sh --dotfiles https://github.com/myorg/work-dotfiles.git"
-      echo "  ./bootstrap.sh --cli-only --minimal"
+      echo "  ./bootstrap.sh --dotfiles git@github.com:you/dotfiles.git"
+      echo "  ./bootstrap.sh --dotfiles https://github.com/you/dotfiles.git"
+      echo "  ./bootstrap.sh --cli-only"
       echo "  ./bootstrap.sh --minimal --dump"
       echo ""
       echo "Environment variables:"
       echo "  BOOTSTRAP_MINIMAL=1              Equivalent to --minimal"
-      echo "  BOOTSTRAP_FULL=1                 Equivalent to --full"
-      echo "  BOOTSTRAP_DOTFILES=\"user/repo\"   Equivalent to --dotfiles user/repo"
+      echo "  BOOTSTRAP_DOTFILES=\"<clone url>\"  Equivalent to --dotfiles <url>"
       echo "  BOOTSTRAP_CLI_ONLY=1             Equivalent to --cli-only"
       echo "  BOOTSTRAP_DUMP=1                 Equivalent to --dump"
       exit 0
@@ -101,6 +112,26 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Validate dotfiles configuration: a full clone URL is mandatory, no baked-in default
+if [ -n "$DOTFILES_REPO" ] && ! is_full_git_url "$DOTFILES_REPO"; then
+  echo "Invalid dotfiles repository: $DOTFILES_REPO"
+  echo "Pass the full clone URL, e.g. git@github.com:you/dotfiles.git or https://github.com/you/dotfiles.git"
+  exit 1
+fi
+if [ "$RUN_DOTFILES" = true ] && [ -z "$DOTFILES_REPO" ]; then
+  echo "Dotfiles setup requested but no repository URL was given."
+  echo "Use --dotfiles <clone url> or set BOOTSTRAP_DOTFILES."
+  exit 1
+fi
+
+if [ "${BOOTSTRAP_PARSE_ONLY:-}" = "1" ]; then
+  echo "RUN_DOTFILES=$RUN_DOTFILES"
+  echo "DOTFILES_REPO=$DOTFILES_REPO"
+  echo "CLI_ONLY=$CLI_ONLY"
+  echo "DUMP_BREWFILE=$DUMP_BREWFILE"
+  exit 0
+fi
 
 echo "🚀 Starting automated Mac bootstrap..."
 
@@ -155,11 +186,11 @@ fi
 
 # Optional dump/update of ~/.Brewfile with all currently installed packages
 if [ -z "$DUMP_BREWFILE" ]; then
-  TMP_CANDIDATE="/tmp/brew-candidate-$$.txt"
+  TMP_CANDIDATE="$(mktemp /tmp/brew-candidate.XXXXXX)"
   brew bundle dump --force --file="$TMP_CANDIDATE" 2>/dev/null || true
-  if [ -f "$TMP_CANDIDATE" ]; then
+  if [ -s "$TMP_CANDIDATE" ]; then
     if ! grep -q "cask_args.*adopt:" "$TMP_CANDIDATE" 2>/dev/null; then
-      TMP_CANDIDATE_FMT="/tmp/brew-candidate-fmt-$$.txt"
+      TMP_CANDIDATE_FMT="$(mktemp /tmp/brew-candidate-fmt.XXXXXX)"
       echo 'cask_args appdir: "/Applications", adopt: true' > "$TMP_CANDIDATE_FMT"
       echo "" >> "$TMP_CANDIDATE_FMT"
       cat "$TMP_CANDIDATE" >> "$TMP_CANDIDATE_FMT"
@@ -167,7 +198,7 @@ if [ -z "$DUMP_BREWFILE" ]; then
     fi
 
     # Check if ~/.Brewfile is already identical
-    if [ -f "$HOME/.Brewfile" ] && git diff --no-index --quiet "$HOME/.Brewfile" "$TMP_CANDIDATE"; then
+    if [ -f "$HOME/.Brewfile" ] && diff -q "$HOME/.Brewfile" "$TMP_CANDIDATE" >/dev/null 2>&1; then
       echo "✨ ~/.Brewfile is already up to date with all installed packages."
       DUMP_BREWFILE=false
       rm -f "$TMP_CANDIDATE" 2>/dev/null || true
@@ -184,7 +215,11 @@ if [ -z "$DUMP_BREWFILE" ]; then
             echo ""
             echo "🔍 Generating diff of installed packages vs ~/.Brewfile..."
             if [ -f "$HOME/.Brewfile" ]; then
-              git diff --no-index --color "$HOME/.Brewfile" "$TMP_CANDIDATE" || true
+              if command -v git >/dev/null 2>&1; then
+                git diff --no-index --color "$HOME/.Brewfile" "$TMP_CANDIDATE" || true
+              else
+                diff -u "$HOME/.Brewfile" "$TMP_CANDIDATE" || true
+              fi
             else
               echo "📄 No existing ~/.Brewfile found on disk. New file will contain:"
               cat "$TMP_CANDIDATE"
@@ -211,6 +246,8 @@ if [ -z "$DUMP_BREWFILE" ]; then
       DUMP_BREWFILE=false
       rm -f "$TMP_CANDIDATE" 2>/dev/null || true
     fi
+  else
+    rm -f "$TMP_CANDIDATE" 2>/dev/null || true
   fi
 fi
 
@@ -298,7 +335,11 @@ if [ "$CLI_ONLY" != true ]; then
     curl -fsSL -o /tmp/rex.dmg "https://blob.superlogical.com/download/rex-app/preview/latest.dmg"
     hdiutil detach /Volumes/Rex -quiet 2>/dev/null || true
     hdiutil attach /tmp/rex.dmg -mountpoint /Volumes/Rex -nobrowse -quiet
-    cp -R "/Volumes/Rex/Rex Beta.app" /Applications/
+    if codesign --verify --deep --strict "/Volumes/Rex/Rex Beta.app" >/dev/null 2>&1; then
+      cp -R "/Volumes/Rex/Rex Beta.app" /Applications/
+    else
+      echo "⚠️  Rex Terminal code signature verification failed. Skipping install."
+    fi
     hdiutil detach /Volumes/Rex -quiet 2>/dev/null || true
     rm -f /tmp/rex.dmg
   fi
@@ -334,11 +375,16 @@ if [ -z "$RUN_DOTFILES" ]; then
     case "$REPLY" in
       [yY][eE][sS]|[yY])
         RUN_DOTFILES=true
-        if ! read -r -p "Enter Git repo (e.g. username/repo or full URL) [default: $DEFAULT_DOTFILES_REPO]: " USER_REPO </dev/tty; then
+        if ! read -r -p "Enter Git clone URL (e.g. git@github.com:you/dotfiles.git): " USER_REPO </dev/tty; then
           echo ""
           exit 130
         fi
-        DOTFILES_REPO="${USER_REPO:-$DEFAULT_DOTFILES_REPO}"
+        if [ -n "$USER_REPO" ] && is_full_git_url "$USER_REPO"; then
+          DOTFILES_REPO="$USER_REPO"
+        else
+          echo "No valid clone URL given; skipping dotfiles."
+          RUN_DOTFILES=false
+        fi
         ;;
       *)
         RUN_DOTFILES=false
@@ -350,29 +396,50 @@ if [ -z "$RUN_DOTFILES" ]; then
 fi
 
 if [ "$RUN_DOTFILES" = true ]; then
-  DOTFILES_REPO="${DOTFILES_REPO:-$DEFAULT_DOTFILES_REPO}"
   echo "⚙️  Preparing Chezmoi for dotfiles repo: $DOTFILES_REPO..."
   if ! command -v chezmoi >/dev/null 2>&1; then
     brew install chezmoi
   fi
 
-  # Normalize repository URL for reachability test
-  TEST_URL="$DOTFILES_REPO"
-  if [[ "$TEST_URL" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
-    TEST_URL="https://github.com/$TEST_URL.git"
-  fi
-
   # Determine if repository is public or requires authentication
-  if [[ "$DOTFILES_REPO" =~ ^git@ ]]; then
-    # Explicit SSH URL (e.g. git@github.com:owner/repo.git)
-    HOST="${DOTFILES_REPO#*@}"
-    HOST="${HOST%%:*}"
-    if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T "git@$HOST" 2>&1 | grep -qE "successfully authenticated|Hi "; then
-      echo "🔑 SSH key not detected for $HOST. Please ensure your SSH agent or key is loaded."
+  if [[ "$DOTFILES_REPO" =~ ^ssh:// ]] || [[ "$DOTFILES_REPO" =~ ^[^/@]+@[^/:]+: ]]; then
+    echo "🔑 Using SSH repository: $DOTFILES_REPO"
+    # Host-agnostic reachability check: ssh exits 255 only when the connection/auth
+    # fails (banners differ per host: GitHub "Hi", GitLab "Welcome", Bitbucket "logged in").
+    SSH_USER=git
+    HOST="$DOTFILES_REPO"
+    PORT=""
+    if [[ "$HOST" =~ ^ssh:// ]]; then
+      HOST="${HOST#ssh://}"
+      if [[ "$HOST" == *@* ]]; then
+        SSH_USER="${HOST%%@*}"
+        HOST="${HOST#*@}"
+      fi
+      HOST="${HOST%%/*}"
+      if [[ "$HOST" == *:* ]]; then
+        PORT="${HOST#*:}"
+        HOST="${HOST%%:*}"
+      fi
+    else
+      SSH_USER="${HOST%%@*}"
+      HOST="${HOST#*@}"
+      HOST="${HOST%%:*}"
     fi
-  elif GIT_TERMINAL_PROMPT=0 git ls-remote "$TEST_URL" HEAD >/dev/null 2>&1; then
+    SSH_RC=0
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 -p "${PORT:-22}" -T "$SSH_USER@$HOST" >/dev/null 2>&1 || SSH_RC=$?
+    if [ "$SSH_RC" -eq 255 ]; then
+      echo "⚠️  SSH key not detected for $HOST. Ensure your SSH agent/key is loaded (ssh-add -l)."
+    fi
+  elif GIT_TERMINAL_PROMPT=0 git ls-remote "$DOTFILES_REPO" HEAD >/dev/null 2>&1; then
     echo "🔓 Public repository accessible without credentials."
   else
+    REPO_HOST="${DOTFILES_REPO#*://}"
+    REPO_HOST="${REPO_HOST%%/*}"
+    if [ "$REPO_HOST" != "github.com" ]; then
+      echo "⚠️  $DOTFILES_REPO is not publicly readable, and GitHub authentication only covers github.com."
+      echo "Use the SSH URL instead (git@$REPO_HOST:<org>/<repo>.git), or configure a credential helper for $REPO_HOST first."
+      exit 1
+    fi
     echo "🔒 Private repository detected. Setting up GitHub authentication..."
     if ! command -v gh >/dev/null 2>&1; then
       brew install gh
@@ -382,10 +449,20 @@ if [ "$RUN_DOTFILES" = true ]; then
       gh auth login -p https -w
     fi
     gh auth setup-git
-    DOTFILES_REPO="$TEST_URL"
   fi
 
   if [ -d "$HOME/.local/share/chezmoi/.git" ]; then
+    # Refuse to update a source dir that tracks a different repo than the one requested
+    # shortcut: normalization compares host+path only, so an explicit :443 or :22 port reads as a different repo and the user is asked to run chezmoi init themselves
+    ORIGIN_URL="$(git -C "$HOME/.local/share/chezmoi" remote get-url origin 2>/dev/null || true)"
+    normalize_link() { local u="${1#*//}"; u="${u#*@}"; u="$(printf '%s' "${u%.git}" | tr ':' '/')"; echo "$u"; }
+    if [ "$(normalize_link "$ORIGIN_URL")" != "$(normalize_link "$DOTFILES_REPO")" ]; then
+      echo "❌ Chezmoi is already initialized from a different repository:"
+      echo "     existing: $ORIGIN_URL"
+      echo "     requested: $DOTFILES_REPO"
+      echo "Re-run with 'chezmoi init --apply \"$DOTFILES_REPO\"' yourself, or use --minimal to skip dotfiles."
+      exit 1
+    fi
     echo "📥 Pulling latest dotfile changes via Chezmoi..."
     chezmoi update
   else

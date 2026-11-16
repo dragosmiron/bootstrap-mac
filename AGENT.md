@@ -21,7 +21,7 @@ Follow this protocol strictly to prevent terminal hangs, avoid questionnaire fat
 ```mermaid
 flowchart TD
     P1["Phase 1: 1-Question Triage"] -->|User choice| P2["Phase 2: Deterministic Execution"]
-    P2 -->|Run ./bootstrap.sh --[full|minimal] --no-dump| P3["Phase 3: Automated Verification"]
+    P2 -->|Run ./bootstrap.sh --[dotfiles|minimal] --no-dump| P3["Phase 3: Automated Verification"]
     P3 --> P4A{"Phase 4: Is git user.name empty?"}
     P4A -- Yes --> P4B["Prompt user for Git name & email"]
     P4A -- No --> Done["Present Completion Dashboard"]
@@ -37,18 +37,18 @@ When the user asks to setup, bootstrap, or provision their Mac, **do not** start
 - **If the user's initial prompt already specifies their preference** (e.g. *"run full bootstrap"*, *"set up minimal mac"*, or specifies a dotfiles repo), **skip asking** and map directly to the corresponding command in Phase 2.
 - **Otherwise**, ask **only** this single question:
 
-> *"Would you like a **Full setup** with personal Chezmoi dotfiles (`--full`), or a **Minimal setup** with baseline CLI tools and applications only (`--minimal`)?"*
->
-> *(Note: You can also specify any custom public or private Git dotfiles repository if you prefer).*
+> *"Would you like a **Full setup** with your Chezmoi dotfiles (`--dotfiles <clone url>`), or a **Minimal setup** with baseline CLI tools and applications only (`--minimal`)?"*
+
+> *(Note: dotfiles must be given as a full clone URL — `git@host:org/repo.git` or `https://host/org/repo.git`. Never guess or invent one; ask the user to paste it.)*
 
 ### Command Mapping
 
 | User Intent / Response | Mapped Command |
 | :--- | :--- |
-| **Full setup** (or personal dotfiles) | `./bootstrap.sh --full --no-dump` |
+| **Full setup** (user supplied a dotfiles URL) | `./bootstrap.sh --dotfiles "<clone url>" --no-dump` |
 | **Minimal setup** (or clean baseline / no dotfiles) | `./bootstrap.sh --minimal --no-dump` |
-| **Custom dotfiles** (e.g. `user/repo` or git URL) | `./bootstrap.sh --dotfiles "<repo>" --no-dump` |
-| **CLI tools only** (headless / server) | `./bootstrap.sh --minimal --cli-only --no-dump` |
+| **Custom dotfiles** (e.g. `git@gitlab.com:me/dots.git`) | `./bootstrap.sh --dotfiles "<clone url>" --no-dump` |
+| **CLI tools only** (headless / server) | `./bootstrap.sh --cli-only --no-dump` |
 
 > ⚠️ **CRITICAL:** Always pass `--no-dump` to the initial script run. This ensures the script executes headlessly without pausing for interactive confirmation on `~/.Brewfile`.
 
@@ -61,7 +61,7 @@ Execute the chosen command in a single bash tool call from the root of the repos
 ```bash
 ./bootstrap.sh --minimal --no-dump
 # or
-./bootstrap.sh --full --no-dump
+./bootstrap.sh --dotfiles "git@github.com:dragosmiron/dotfiles-private.git" --no-dump
 ```
 
 ### Execution Guidelines
@@ -81,6 +81,9 @@ Immediately after `bootstrap.sh` exits with code 0, run the automated health che
 # 0. Ensure Homebrew environment & user local binaries are loaded in the current subshell
 eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv 2>/dev/null)"
 export PATH="$HOME/.local/bin:$PATH"
+
+# 0b. Repo-level self-test (only if the bootstrap-mac repo is checked out locally)
+./test/test_bootstrap.sh
 
 # 1. Verify Core Developer Runtimes
 node --version
@@ -113,7 +116,7 @@ zsh -n "$HOME/.zshrc"
 After verification passes, check whether any quick personal configuration is needed.
 
 ### 1. Git Identity Check
-- If `--full` was chosen, Chezmoi dotfiles typically configure git identity (`dragosmiron/dotfiles-private`).
+- If a dotfiles repo was applied, Chezmoi dotfiles typically configure git identity (`dragosmiron/dotfiles-private` when that repo was the source).
 - If `--minimal` was chosen (or git identity is unconfigured):
   ```bash
   GIT_NAME="$(git config --global user.name 2>/dev/null || true)"

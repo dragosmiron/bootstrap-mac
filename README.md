@@ -50,8 +50,7 @@ You can control exactly how much or how little is applied:
 | Command | Behavior |
 | :--- | :--- |
 | `./bootstrap.sh --minimal` | **Minimal Setup Only**: Installs core tools, shell ergonomics, and defaults; requires **no dotfiles repo and no GitHub login**. |
-| `./bootstrap.sh --dotfiles <repo>` | **Custom Dotfiles Sync**: Applies baseline stack and pulls Chezmoi dotfiles from **any** repo (e.g. `username/repo` or full URL, public or private). |
-| `./bootstrap.sh --full` | **Default Personal Setup**: Applies baseline stack and syncs default personal repo (`dragosmiron/dotfiles-private`). |
+| `./bootstrap.sh --dotfiles <url>` | **Custom Dotfiles Sync**: Applies baseline stack and pulls Chezmoi dotfiles from a Git **clone URL** — `git@github.com:you/dotfiles.git` or `https://github.com/you/dotfiles.git` (public or private). |
 | `./bootstrap.sh --cli-only` | **Headless / Server Mode**: Installs only CLI runtimes and tools; skips all GUI casks and Rex Terminal. |
 | `./bootstrap.sh --dump` | **Refresh Brewfile**: Dumps/updates `~/.Brewfile` with all currently installed packages on the machine. |
 | `./bootstrap.sh --no-dump` | **Skip Brewfile Dump**: Skips the Brewfile dump prompt without asking. |
@@ -62,11 +61,11 @@ You can control exactly how much or how little is applied:
 # Minimal setup only (no dotfiles repo, zero auth required):
 /usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)" -- --minimal
 
-# Setup with any custom public or work dotfiles repo:
-/usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)" -- --dotfiles mycompany/mac-dotfiles
+# Setup with any custom public or work dotfiles repo (paste the clone URL):
+/usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)" -- --dotfiles https://github.com/mycompany/mac-dotfiles.git
 
 # Full personal setup:
-/usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)" -- --full
+/usr/bin/env bash -c "$(curl -fsSL https://raw.githubusercontent.com/dragosmiron/bootstrap-mac/main/bootstrap.sh)" -- --dotfiles git@github.com:dragosmiron/dotfiles-private.git
 ```
 
 ---
@@ -112,6 +111,9 @@ which fzf zoxide bat eza lazygit node go python3.12 rex
 
 # Verify Homebrew bundle state
 brew bundle check --no-upgrade --file="./Brewfile"
+
+# Run automated bootstrap test suite
+./test/test_bootstrap.sh
 
 # Test shell syntax
 zsh -n ~/.zshrc
