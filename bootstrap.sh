@@ -386,6 +386,9 @@ fi
 echo "🍎 Applying macOS system preferences..."
 mkdir -p "$HOME/Desktop/Screenshots"
 defaults write com.apple.screencapture location "$HOME/Desktop/Screenshots"
+# macOS 27 split the key (and ignores the legacy one), so write both
+defaults write com.apple.screencapture location-screenshot "$HOME/Desktop/Screenshots"
+defaults write com.apple.screencapture location-screenrecording "$HOME/Desktop/Screenshots"
 defaults write NSGlobalDomain AppleShowAllExtensions -bool true
 defaults write com.apple.finder ShowPathbar -bool true
 defaults write -g ApplePressAndHoldEnabled -bool false
