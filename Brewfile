@@ -18,7 +18,7 @@ brew "netbird"
 brew "bitwarden-cli"
 
 # Daily Essentials & Security Casks
-cask "raycast"
+cask "tinycast"
 cask "keepingyouawake"
 cask "bitwarden"
 cask "obsidian"
